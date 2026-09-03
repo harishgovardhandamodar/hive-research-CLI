@@ -9,3 +9,5 @@ build/
 *.egg-info/
 .hive/
 exports/
+.DS_Store
+output/
