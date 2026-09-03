@@ -14,6 +14,7 @@ Version: `0.1.0` · Python `>=3.10` · License: MIT (Feynman © companion-inc/fe
 4. [Configuration](#4-configuration)
 5. [CLI Reference](#5-cli-reference)
 6. [TUI Workbench](#6-tui-workbench)
+6b. [Hive-Machine — Perplexity Computer](#6b-hive-machine--perplexity-computer-local)
 7. [Paper System](#7-paper-system)
 8. [Research Workflows](#8-research-workflows)
 9. [Open WebUI Integration](#9-open-webui-integration)
@@ -368,6 +369,115 @@ All workers use `@work(thread=True)` + `call_from_thread(output.write)` to avoid
 Help text `hive/tui/app.py:41` explains mode, input, persistence.
 
 ---
+
+## 6b. Hive-Machine — Perplexity Computer (local)
+
+Perplexity Computer parity, local-only. Hive-Machine gives the local LLM a **sandboxed computer**: file workspace, bash/python, web, terminal. No cloud, no browser automation, just `~/.hive/machine/workspace` jailed.
+
+### 6b.1 Architecture (`hive/machine/`)
+
+```
+hive/machine/
+  __init__.py  # MACHINE_DIR=~/.hive/machine, WORKSPACE=.../workspace, HISTORY_DB=.../machine.db
+  tools.py     # 8 tools + _jail() sandbox, TOOL_SCHEMAS, DISPATCH, dispatch_tool()
+  agent.py     # SYSTEM prompt, _extract_tool (```json {"tool": ...}```), run_task(task, cfg, max_steps=12), save_run(), list_history()
+  app.py       # HiveMachineApp (Textual) — file tree, RichLog center, preview right, Input
+```
+
+**Sandbox** `hive/machine/tools.py:15` `_jail(path)`: `WORKSPACE / Path(path).resolve()` must start with `WORKSPACE.resolve()`, else `ValueError` — prevents `..` / absolute escape. Every file/code op uses `_jail`.
+
+**DB** `hive/machine/__init__.py:8` `~/.hive/machine/machine.db` `runs(id, task, created, steps, final)` — `agent.py:20` `_init_db()` / `save_run()`.
+
+### 6b.2 Tools (8) `hive/machine/tools.py:45`
+
+| Tool | Args | Impl |
+|---|---|---|
+| `list_files` | `path=".", recursive=false` | `_jail(path).glob("*"/"**/*")` → `rel  [dir/file N B]` (cap 200) |
+| `read_file` | `path, max_bytes=50000` | `_jail(path).read_bytes()[:max]` → utf-8 or `[binary … hex]` |
+| `write_file` | `path, content` | `_jail(path).parent.mkdir` → `write_text` → `wrote N chars → path` |
+| `delete_path` | `path` | `_jail(path)` → `shutil.rmtree` or `unlink` |
+| `run_bash` | `cmd, timeout=30` | `subprocess.run(shell=True, cwd=WORKSPACE, capture_output, timeout)` → `exit code + stdout/stderr` (20k cap) |
+| `run_python` | `code, timeout=30` | write `WORKSPACE/_machine_exec.py` → `run_bash("python3 _machine_exec.py")` |
+| `web_fetch` | `url, max_chars=15000` | `httpx` + `BeautifulSoup` strip script/style → text[:max] |
+| `web_search` | `query, top_k=5` | `hive.papers.openalex.search(query, top_k)` → title/year/doi/cites/abstract |
+
+`TOOL_SCHEMAS` + `DISPATCH` dict enable `dispatch_tool(name, **kwargs)` `hive/machine/tools.py:90`.
+
+### 6b.3 Agent `hive/machine/agent.py:14`
+
+**SYSTEM** `hive/machine/agent.py:14` describes tools and forces one ` ```json {"tool": "...", "args": {...}} ``` ` per turn, else final markdown answer.
+
+```
+User: task
+→ [system + user task]
+→ loop max_steps 12:
+   chat(cfg, messages) → text
+   _extract_tool(text) via ```json``` regex → if None → final answer → save_run()
+   else dispatch_tool(tool, args) → clipped 8k → messages += assistant text + "[tool result]\n..."
+→ if max_steps reached → final summarize prompt → chat → save_run
+→ persist via save_run() to HISTORY_DB
+```
+
+Providers via `hive.llm.get_provider(cfg)` — same auto Ollama/LM Studio + 404 fallback as research. `run_task(task, cfg, max_steps, verbose)` returns final markdown.
+
+Helpers: `list_history(limit=20)` reads `runs`.
+
+### 6b.4 CLI (`hive/cli.py:220` `machine_app`)
+
+```bash
+hive machine              # no args → TUI via machine_callback (invoke_without_command)
+hive machine tui          # same, explicit
+hive machine run "fetch https://example.com and save summary to report.md" --steps 12
+hive machine ls [path] [--recursive]
+hive machine read <path>  # relative to workspace
+hive machine write <path> "<content>"
+hive machine exec --cmd "ls -la"
+hive machine python --code "print(2+2)"
+hive machine fetch https://example.com
+hive machine search "sparse autoencoders" --top 5
+hive machine history --limit 20
+hive-machine              # entry point hive.machine.app:run (TUI) via pyproject.toml:30
+```
+
+All file paths are **relative to workspace** `~/.hive/machine/workspace` and jailed.
+
+### 6b.5 TUI `hive/machine/app.py:22`
+
+`HiveMachineApp` CSS `hive/machine/app.py:40`: `Screen` vertical, `#left 30` / `#center 1fr` / `#right 40` borders `$primary/$secondary/$accent`.
+
+```
+┌─ Header (Hive-Machine — local Perplexity Computer, clock) ─┐
+├─ Left (30)   │ Center (1fr)           │ Right (40)        │
+│ Workspace    │ HELP + RichLog output  │ Preview           │
+│ file list    │ (agent chat, tool     │ (first file or    │
+│ [Refresh]    │  results, final md)    │  selected file)   │
+├─ Task input [fetch…] + steps [12] + Run ───────────────────┤
+├─ Footer (q/f/r/h/?) ───────────────────────────────────────┤
+```
+
+- `compose()` `hive/machine/app.py:52`: `Header`, `Horizontal#main` with `Vertical#left` (`Static filelist` + `Button Refresh`), `Vertical#center` (`Static HELP` + `RichLog#output`), `Vertical#right` (`RichLog#preview`), `Horizontal#input-row` (`Input#task`, `Input#steps`, `Button#run`).
+- `on_mount` focuses task, calls `_refresh_files()` (`list_files(".", false)` → `#filelist` Static, preview first file via `read_file` → `#preview`) and `_refresh_status()` (LLM health `hive/llm/get_provider` → `HELP` footer).
+- `on_run/on_submit` → `_dispatch()` `hive/machine/app.py:105`: validates task, parses steps, logs `▶ task`, calls `_run_task(task, steps)` `@work(thread=True)` `hive/machine/app.py:122` → `run_task()` + `call_from_thread(output.write)` + `_refresh_files`.
+- `action_show_history` `hive/machine/app.py:135` → `list_history(20)` → bullet list with `datetime`.
+- `HELP` `hive/machine/app.py:22`: explains task input, tools, jailed workspace, keys `q/f/r/h/?`.
+
+Tested via `run_test` pilot: `menu count 15` for Research TUI and `filelist`/`task`/`steps` for Machine TUI both render.
+
+### 6b.6 Examples
+
+```bash
+# 1. Simple file + code
+hive machine run "write hello.py that prints 42 and run it, save output to out.txt" --steps 6
+hive machine ls
+hive machine read out.txt
+
+# 2. Web + summarize (local LLM)
+hive machine run "fetch https://example.com, summarize to report.md with headings, list files" --steps 10
+
+# 3. TUI workflow: hive machine → type "analyze README.md and create summary.md" → Run → preview shows summary.md
+```
+
+History persists: `hive machine history` or TUI `h` shows `id, task, steps, datetime` from `machine.db`.
 
 ## 7. Paper System
 

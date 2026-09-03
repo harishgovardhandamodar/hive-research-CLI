@@ -27,6 +27,7 @@ dev = ["pytest>=8.0", "pytest-asyncio"]
 [project.scripts]
 hive = "hive.cli:app"
 hive-research = "hive.cli:app"
+hive-machine = "hive.machine.app:run"
 
 [project.urls]
 Homepage = "https://github.com/harishgovardhandamodar/hive-research-CLI"

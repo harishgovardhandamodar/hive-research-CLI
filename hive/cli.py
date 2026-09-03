@@ -20,6 +20,10 @@ from hive.research.session import list_sessions
 app = typer.Typer(add_completion=False, rich_markup_mode="markdown", help="Hive Research — local Feynman clone (Ollama/LM Studio)")
 console = Console()
 
+# ── Hive-Machine sub-app (Perplexity Computer) ───────────────────────
+machine_app = typer.Typer(help="Hive-Machine — local Perplexity Computer (files, code, web, terminal)", no_args_is_help=False)
+app.add_typer(machine_app, name="machine")
+
 
 # ── helpers ──────────────────────────────────────────────────────────
 
@@ -219,6 +223,126 @@ def tui_cmd():
         console.print(f"[red]TUI requires textual: {e}\nInstall: pip install textual  or  pip install -e \".[tui]\"[/red]")
         raise typer.Exit(1)
     run()
+
+
+# ── Hive-Machine commands ──────────────────────────────────────────
+
+@machine_app.command("run")
+def machine_run(
+    task: str = typer.Argument(..., help="Task for Hive-Machine, e.g. 'fetch https://example.com and summarize to report.md'"),
+    steps: int = typer.Option(12, "--steps", "-n", help="Max agent steps"),
+):
+    """Run Hive-Machine agent headlessly (no TUI) — local computer use."""
+    from hive.machine.agent import run_task
+    from hive.machine import WORKSPACE
+    cfg = _cfg()
+    console.print(f"[bold cyan]Hive-Machine: {task}[/bold cyan]  [dim]max_steps={steps} ws={WORKSPACE}[/dim]")
+    out = run_task(task, cfg, max_steps=steps, verbose=False)
+    console.print(Markdown(out))
+
+
+@machine_app.command("tui")
+def machine_tui():
+    """Launch Hive-Machine TUI — local Perplexity Computer."""
+    try:
+        from hive.machine.app import run as mrun
+    except ImportError as e:
+        console.print(f"[red]Hive-Machine TUI requires textual: {e}[/red]")
+        raise typer.Exit(1)
+    mrun()
+
+
+@machine_app.command("ls")
+def machine_ls(
+    path: str = typer.Argument(".", help="Path relative to workspace ~/.hive/machine/workspace"),
+    recursive: bool = typer.Option(False, "--recursive", "-r", help="Recursive"),
+):
+    """List workspace files (jailed)."""
+    from hive.machine.tools import list_files
+    console.print(list_files(path, recursive))
+
+
+@machine_app.command("read")
+def machine_read(path: str = typer.Argument(..., help="File to read (relative to workspace)")):
+    """Read a workspace file."""
+    from hive.machine.tools import read_file
+    console.print(read_file(path))
+
+
+@machine_app.command("write")
+def machine_write(
+    path: str = typer.Argument(..., help="Destination relative to workspace"),
+    content: str = typer.Argument(..., help="Content to write"),
+):
+    """Write a workspace file."""
+    from hive.machine.tools import write_file
+    console.print(write_file(path, content))
+
+
+@machine_app.command("exec")
+def machine_exec(
+    cmd: str = typer.Option(..., "--cmd", "-c", help="Bash command to run in workspace"),
+    timeout: int = typer.Option(30, "--timeout"),
+):
+    """Run bash in Hive-Machine workspace."""
+    from hive.machine.tools import run_bash
+    console.print(run_bash(cmd, timeout))
+
+
+@machine_app.command("python")
+def machine_python(
+    code: str = typer.Option(..., "--code", "-c", help="Python code to run"),
+    timeout: int = typer.Option(30, "--timeout"),
+):
+    """Run python snippet in workspace."""
+    from hive.machine.tools import run_python
+    console.print(run_python(code, timeout))
+
+
+@machine_app.command("fetch")
+def machine_fetch(url: str = typer.Argument(..., help="URL to fetch")):
+    """Web fetch via Hive-Machine (local httpx + BS4)."""
+    from hive.machine.tools import web_fetch
+    console.print(web_fetch(url)[:8000])
+
+
+@machine_app.command("search")
+def machine_search(query: str = typer.Argument(..., help="Search query (OpenAlex)"), top: int = typer.Option(5, "--top")):
+    """Web/paper search via Hive-Machine."""
+    from hive.machine.tools import web_search
+    console.print(web_search(query, top))
+
+
+@machine_app.command("history")
+def machine_history(limit: int = typer.Option(20, "--limit", "-n")):
+    """Show Hive-Machine run history."""
+    from hive.machine.agent import list_history
+    rows = list_history(limit)
+    if not rows:
+        console.print("[dim]No machine runs yet[/dim]")
+        return
+    t = Table()
+    t.add_column("ID")
+    t.add_column("Task")
+    t.add_column("Steps")
+    t.add_column("Created")
+    import datetime
+    for rid, task, created, steps in rows:
+        dt = datetime.datetime.fromtimestamp(created).strftime("%Y-%m-%d %H:%M") if created else ""
+        t.add_row(str(rid), task[:60], str(steps), dt)
+    console.print(t)
+
+
+@machine_app.callback(invoke_without_command=True)
+def machine_callback(ctx: typer.Context):
+    """Hive-Machine — local Perplexity Computer. No args → launch TUI."""
+    if ctx.invoked_subcommand is None:
+        try:
+            from hive.machine.app import run as mrun
+        except ImportError as e:
+            console.print(f"[red]Hive-Machine TUI requires textual: {e}[/red]")
+            raise typer.Exit(1)
+        mrun()
 
 
 @app.command("serve")
