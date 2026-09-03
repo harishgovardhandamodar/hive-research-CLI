@@ -1,0 +1,44 @@
+[project]
+name = "hive-research"
+version = "0.1.0"
+description = "Local-only clone of Feynman — AI research agent via Ollama & LM Studio. CLI + Open WebUI integration."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "hive-research" }]
+keywords = ["research", "papers", "ollama", "lmstudio", "open-webui", "feynman"]
+dependencies = [
+  "typer>=0.12",
+  "httpx>=0.27",
+  "pydantic>=2.5",
+  "rich>=13.7",
+  "python-dotenv>=1.0",
+  "tomli>=2.0; python_version < '3.11'",
+  "tomli-w>=1.0",
+  "feedparser>=6.0",
+  "beautifulsoup4>=4.12",
+  "textual>=0.80",
+]
+
+[project.optional-dependencies]
+tui = ["textual>=0.80"]
+dev = ["pytest>=8.0", "pytest-asyncio"]
+
+[project.scripts]
+hive = "hive.cli:app"
+hive-research = "hive.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/harishgovardhandamodar/hive-research-CLI"
+Repository = "https://github.com/harishgovardhandamodar/hive-research-CLI"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["hive", "openwebui"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
