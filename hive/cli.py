@@ -460,16 +460,23 @@ def machine_callback(ctx: typer.Context):
 
 
 @app.command("serve")
-def serve(host: str = typer.Option("127.0.0.1", "--host"), port: int = typer.Option(8000, "--port"), no_auth: bool = typer.Option(False, "--no-auth", help="Plain localhost mode")):
-    """Open a minimal local workbench (static preview of sessions/artifacts)."""
+def serve(
+    host: str = typer.Option("127.0.0.1", "--host"),
+    port: int = typer.Option(8000, "--port"),
+    no_auth: bool = typer.Option(False, "--no-auth", help="Plain localhost mode"),
+    web: bool = typer.Option(False, "--web", help="Serve TSX web dashboard + API (Hive Research + Hive-Machine)"),
+):
+    """Open a minimal local workbench (static preview of sessions/artifacts) — add --web for TSX dashboard."""
+    if web:
+        from hive.web.server import run_web
+        run_web(host, port)
+        return
     from http.server import HTTPServer, SimpleHTTPRequestHandler
     import sqlite3
     console.print(f"[green]Hive workbench at http://{host}:{port} — sessions in {DB_FILE}[/green]")
-    console.print("[dim]This is a minimal preview; full workbench UI is available via Open WebUI integration (see openwebui/README.md)[/dim]")
-    # quick dump
+    console.print("[dim]This is a minimal preview; full workbench UI is available via Open WebUI integration (see openwebui/README.md) — try `hive serve --web` or `hive web` for TSX dashboard[/dim]")
     for sid, topic, ts in list_sessions():
         console.print(f"  {sid}  {topic}")
-    # simple file server for artifacts exported to ~/.hive/exports (if exists)
     exports = Path.home() / ".hive" / "exports"
     exports.mkdir(parents=True, exist_ok=True)
     import os
@@ -479,6 +486,17 @@ def serve(host: str = typer.Option("127.0.0.1", "--host"), port: int = typer.Opt
         httpd.serve_forever()
     except KeyboardInterrupt:
         console.print("\n[dim]Stopped[/dim]")
+
+
+@app.command("web")
+def web_cmd(
+    host: str = typer.Option("127.0.0.1", "--host"),
+    port: int = typer.Option(8000, "--port"),
+    open: bool = typer.Option(False, "--open", help="Open browser"),
+):
+    """Launch web dashboard (TSX) — Research + Hive-Machine charts, statuses, logs (local-first)."""
+    from hive.web.server import run_web
+    run_web(host, port, open_browser=open)
 
 
 @app.command("config")

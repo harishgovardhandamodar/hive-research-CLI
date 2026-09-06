@@ -4,10 +4,12 @@ __pycache__/
 .venv/
 venv/
 .env
-dist/
+/dist/
 build/
 *.egg-info/
 .hive/
 exports/
 .DS_Store
 output/
+web/node_modules/
+!web/dist/
