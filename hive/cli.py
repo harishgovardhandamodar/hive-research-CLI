@@ -214,6 +214,29 @@ def watch(topic: str = typer.Argument(..., help="Topic"), top: int = typer.Optio
     _workflow_cmd("watch", topic, top, full_text_top)
 
 
+@app.command("report")
+def report_cmd(
+    topic: str = typer.Argument(..., help="Topic for deep analysis report"),
+    top: int = typer.Option(12, "--top", help="Papers to ground on"),
+    full_text_top: int = typer.Option(3, "--full-text-top", help="Full-text evidence count"),
+    depth: str = typer.Option("deep", "--depth", help="brief|standard|deep"),
+    no_save: bool = typer.Option(False, "--no-save", help="Don't persist to DB/workspace"),
+):
+    """Deep analysis report — 20-section Feynman-parity report (hero, provenance, synthesis, matrix, checklist, lineage, changelog) — local only."""
+    cfg = _cfg()
+    prov = get_provider(cfg)
+    ok, msg = prov.health()
+    if not ok:
+        console.print(f"[red]No local LLM reachable: {msg}[/red]")
+        raise typer.Exit(1)
+    from hive.research.report import generate_deep_report
+    with console.status(f"[bold green]Deep Report — {topic} via {prov.name} (top={top}, depth={depth})...[/bold green]"):
+        md, sid, aid = generate_deep_report(topic, cfg, top_k=top, full_text_top=full_text_top, depth=depth, save=not no_save)
+    console.print(Markdown(md))
+    if not no_save:
+        console.print(f"\n[dim]Saved artifact {aid} session {sid} → ~/.hive/machine/workspace/report_{sid}.md — hive sessions[/dim]")
+
+
 @app.command("tui")
 def tui_cmd():
     """Launch Hive Research - A Local research companion — terminal workbench (local, Ollama/LM Studio)."""

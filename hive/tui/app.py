@@ -34,6 +34,7 @@ MENU = [
     ("draft", "/draft"),
     ("autoresearch", "/autoresearch"),
     ("watch", "/watch"),
+    ("report", "Deep Report (Feynman)"),
     ("sessions", "Sessions (/outputs)"),
     ("doctor", "Doctor"),
 ]
@@ -43,6 +44,7 @@ HELP_TEXT = """**Hive Research - A Local research companion** — local research
 - Type a topic in the input and press Enter (or click Run).
 - Left menu: choose workflow. `Rank` shows deterministic PaperRank; `DeepResearch` etc. run full LLM synthesis via local model.
 - `Paper` accepts DOI / arXiv ID / title. `Ask` chats directly.
+- `Deep Report` → 20-section Feynman-parity deep analysis (hero, provenance, Pi chat, BioTools, synthesis, matrix, evidence, previews, checklist, compute/lineage, audit, gaps, reading list, changelog) — saved to `~/.hive/hive.db` + `~/.hive/machine/workspace/report_*.md` for preview.
 - All results are saved to `~/.hive/hive.db` (view via Sessions).
 - Keys: `q` quit, `f` focus input, `s` sessions, `d` doctor, `1-9` quick menu.
 """
@@ -168,6 +170,8 @@ if _HAS_TEXTUAL:
                 self._run_paper(q)
             elif kind == "ask":
                 self._run_ask(q)
+            elif kind == "report":
+                self._run_report(q, topk)
             elif kind in ("deepresearch", "lit", "compare", "review", "audit", "replicate", "recipe", "draft", "autoresearch", "watch"):
                 self._run_workflow(kind, q, topk)
             elif kind == "sessions":
@@ -237,6 +241,18 @@ if _HAS_TEXTUAL:
                 self.call_from_thread(self.query_one("#output", RichLog).write, resp.content)
             except Exception as e:
                 self.call_from_thread(self.query_one("#output", RichLog).write, f"[red]Ask error: {e}[/red]")
+
+        @work(thread=True)
+        def _run_report(self, topic: str, top_k: int):
+            try:
+                from hive.research.report import generate_deep_report
+                self.call_from_thread(self.query_one("#output", RichLog).write, f"[dim]Deep Report — Feynman parity (20 sections) via {get_provider(self.cfg).name}… top={top_k}[/dim]")
+                md, sid, aid = generate_deep_report(topic, self.cfg, top_k=top_k, full_text_top=self.cfg.full_text_top, depth="deep")
+                # show provenance + preview stub
+                preview = md[:12000]
+                self.call_from_thread(self.query_one("#output", RichLog).write, preview + f"\n\n[dim]Saved artifact {aid} session {sid} → ~/.hive/machine/workspace/report_{sid}.md — view via `hive sessions` or `hive machine ls`[/dim]")
+            except Exception as e:
+                self.call_from_thread(self.query_one("#output", RichLog).write, f"[red]Deep Report error: {e}[/red]")
 
         @work(thread=True)
         def _run_workflow(self, kind: str, topic: str, top_k: int):

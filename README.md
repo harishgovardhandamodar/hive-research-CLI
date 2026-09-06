@@ -44,6 +44,7 @@ Config: `~/.hive/config.toml` or env (`HIVE_PROVIDER`, `OLLAMA_BASE_URL`, `LMSTU
 | `/draft` | `hive draft <topic>` |
 | `/autoresearch` | `hive autoresearch <idea>` |
 | `/watch` | `hive watch <topic>` |
+| *(new)* Deep Report | `hive report <topic> --top 12 --depth deep` — 20-section Feynman parity (hero, provenance, Pi chat, BioTools, synthesis, matrix, evidence, previews, checklist, compute/lineage, audit, gaps, reading list, changelog) |
 | `/thinking` | `hive config --provider … --ollama-model …` |
 | `/outputs` | `hive sessions` |
 
@@ -58,6 +59,7 @@ hive deepresearch "test-time scaling for LLM reasoning" --top 12
 hive lit "NeurIPS 2024 best papers on retrieval"
 hive compare "RLHF vs DPO" --top 8
 hive draft "survey on synthetic data for code"
+hive report "AI Agents" --top 12 --depth deep  # 20-section deep analysis (Feynman TUI parity)
 hive ask "explain PaperRank scoring transparently"
 
 # TUI — Research workbench (like Feynman Pi terminal)
