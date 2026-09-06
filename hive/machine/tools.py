@@ -162,10 +162,30 @@ DISPATCH = {
 }
 
 def dispatch_tool(name: str, **kwargs) -> str:
+    # audited dispatch — logs every tool with severity/impact/proofs
+    from hive.machine.audit import log_event
     fn = DISPATCH.get(name)
     if not fn:
-        return f"[error] unknown tool {name}"
+        res = f"[error] unknown tool {name}"
+        try:
+            log_event(tool=name, args=kwargs, result=res, bytes_out=len(str(kwargs)), bytes_in=len(res))
+        except Exception:
+            pass
+        return res
     try:
-        return fn(**kwargs)
+        res = fn(**kwargs)
+        # network / file / command bytes
+        bout = len(str(kwargs).encode())
+        binb = len(res.encode()) if isinstance(res, str) else 0
+        try:
+            log_event(tool=name, args=kwargs, result=res, bytes_out=bout, bytes_in=binb)
+        except Exception:
+            pass
+        return res
     except Exception as e:
-        return f"[tool error {name}: {e}]"
+        res = f"[tool error {name}: {e}]"
+        try:
+            log_event(tool=name, args=kwargs, result=res, bytes_out=len(str(kwargs)), bytes_in=len(res))
+        except Exception:
+            pass
+        return res

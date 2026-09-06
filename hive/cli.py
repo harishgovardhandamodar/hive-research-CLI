@@ -356,6 +356,97 @@ def machine_history(limit: int = typer.Option(20, "--limit", "-n")):
     console.print(t)
 
 
+@machine_app.command("workflow")
+def machine_workflow(
+    action: str = typer.Argument(..., help="list|run|example"),
+    name: str = typer.Argument("", help="Workflow name or path for run"),
+    dry: bool = typer.Option(False, "--dry-run", help="Dry run without executing"),
+):
+    """User-defined workflows — end-to-end (YAML/JSON in ~/.hive/machine/workflows/)."""
+    from hive.machine.workflows import list_workflows, run_workflow, EXAMPLE_AI_AGENTS, save_workflow
+    from pathlib import Path
+    if action == "list":
+        wfs = list_workflows()
+        if not wfs:
+            console.print("[dim]No workflows yet — run 'hive machine workflow example' to create one[/dim]")
+            return
+        t = Table(title="Workflows")
+        t.add_column("Name")
+        t.add_column("Path")
+        for p in wfs:
+            t.add_row(p.stem, str(p))
+        console.print(t)
+    elif action == "example":
+        p = save_workflow("ai_agents_report", EXAMPLE_AI_AGENTS)
+        console.print(f"[green]Created {p}[/green]")
+        console.print(Markdown(f"```yaml\n{Path(p).read_text()[:800]}\n```"))
+    elif action == "run":
+        if not name:
+            console.print("[red]Provide workflow name or path: hive machine workflow run <name>[/red]")
+            raise typer.Exit(1)
+        cfg = _cfg()
+        res = run_workflow(name, cfg, dry_run=dry)
+        console.print(f"[bold]Workflow {res['workflow']} done in {res['elapsed']:.1f}s[/bold]")
+        for sid, out in res["outputs"].items():
+            console.print(Markdown(f"### {sid}\n{out[:2000]}"))
+        console.print(f"[dim]Audit: {len(res['audit'])} events — hive machine audit[/dim]")
+    else:
+        console.print("[red]Unknown action: use list|run|example[/red]")
+
+
+@machine_app.command("audit")
+def machine_audit(
+    limit: int = typer.Option(50, "--limit", "-n", help="Events to show"),
+    min_severity: int = typer.Option(0, "--min-severity", help="Filter severity 1-5"),
+    export: str = typer.Option("", "--export", help="Export JSON path"),
+    verify: bool = typer.Option(False, "--verify", help="Verify hash chain"),
+):
+    """Auditable proofs — network, data outflow, files, commands with severity/impact."""
+    from hive.machine.dashboard import render_audit_table, export_command
+    from hive.machine.audit import verify_chain
+    if export:
+        export_command(export)
+        return
+    if verify:
+        ok, msg = verify_chain()
+        console.print(f"[{'green' if ok else 'red'}]{msg}[/{'green' if ok else 'red'}]")
+        return
+    render_audit_table(limit=limit, min_severity=min_severity)
+
+
+@machine_app.command("dashboard")
+def machine_dashboard():
+    """Launch auditable dashboard TUI (network, files, commands, hash proofs)."""
+    try:
+        from hive.machine.dashboard import run_dashboard
+    except ImportError as e:
+        console.print(f"[red]Dashboard requires textual: {e}[/red]")
+        raise typer.Exit(1)
+    run_dashboard()
+
+
+@machine_app.command("nvidia")
+def machine_nvidia():
+    """Nvidia-PAIR — discover all local models (Ollama, LM Studio, NIM) and GPU."""
+    from hive.machine.nvidia_pair import discover_all, nvidia_smi_info
+    cfg = _cfg()
+    console.print(Markdown(f"**GPU:** {nvidia_smi_info()}"))
+    models = discover_all(cfg)
+    t = Table(title="Nvidia-PAIR — Local Models (local-first router)")
+    t.add_column("Provider")
+    t.add_column("Model")
+    t.add_column("URL")
+    t.add_column("Healthy")
+    t.add_column("Extra")
+    for m in models:
+        t.add_row(m.provider, m.model, m.url, "[green]yes[/green]" if m.healthy else "[red]no[/red]", m.extra[:40])
+    console.print(t)
+    from hive.machine.nvidia_pair import pick_best
+    best = pick_best(cfg)
+    if best:
+        console.print(f"[dim]Best for fastest: {best.provider} {best.model} @ {best.url}[/dim]")
+
+
 @machine_app.callback(invoke_without_command=True)
 def machine_callback(ctx: typer.Context):
     """Hive-Machine — local Perplexity Computer. No args → launch TUI."""
@@ -480,6 +571,13 @@ def doctor():
                 console.print(f"  {name}: {'[green]ok[/green]' if r.status_code==200 else f'[red]{r.status_code}[/red]'}")
         except Exception as e:
             console.print(f"  {name}: [red]{e}[/red]")
+
+
+@app.command("dashboard")
+def dashboard(limit: int = typer.Option(50, "--limit", "-n", help="Audit events")):
+    """Auditable proofs dashboard — network, data outflow, files, commands (severity/impact)."""
+    from hive.machine.dashboard import render_full_dashboard
+    render_full_dashboard(limit=limit)
 
 
 @app.callback(invoke_without_command=True)

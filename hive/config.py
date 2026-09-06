@@ -18,10 +18,11 @@ try:
 except ImportError:
     tomli_w = None  # type: ignore
 
-Provider = Literal["ollama", "lmstudio", "auto"]
+Provider = Literal["ollama", "lmstudio", "nvidia", "auto"]
 
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 DEFAULT_LMSTUDIO_URL = "http://localhost:1234/v1"
+DEFAULT_NVIDIA_URL = "http://localhost:8000/v1"
 
 CONFIG_DIR = Path.home() / ".hive"
 CONFIG_FILE = CONFIG_DIR / "config.toml"
@@ -35,6 +36,8 @@ class LLMConfig:
     ollama_model: str = "llama3.1:8b"
     lmstudio_url: str = DEFAULT_LMSTUDIO_URL
     lmstudio_model: str = "qwen/qwen3.8-27b"
+    nvidia_url: str = DEFAULT_NVIDIA_URL
+    nvidia_model: str = "meta/llama3-8b-instruct"
     temperature: float = 0.3
     max_tokens: int = 4096
     timeout_s: int = 120
@@ -69,6 +72,8 @@ def load_config() -> AppConfig:
     cfg.llm.ollama_model = llm_data.get("ollama_model", env("HIVE_OLLAMA_MODEL", cfg.llm.ollama_model))
     cfg.llm.lmstudio_url = llm_data.get("lmstudio_url", env("LMSTUDIO_BASE_URL", env("LMSTUDIO_URL", cfg.llm.lmstudio_url)))
     cfg.llm.lmstudio_model = llm_data.get("lmstudio_model", env("HIVE_LMSTUDIO_MODEL", cfg.llm.lmstudio_model))
+    cfg.llm.nvidia_url = llm_data.get("nvidia_url", env("NVIDIA_BASE_URL", env("NVIDIA_URL", cfg.llm.nvidia_url)))
+    cfg.llm.nvidia_model = llm_data.get("nvidia_model", env("HIVE_NVIDIA_MODEL", env("NVIDIA_MODEL", cfg.llm.nvidia_model)))
     cfg.llm.temperature = float(llm_data.get("temperature", env("HIVE_TEMPERATURE", cfg.llm.temperature)))
     cfg.llm.max_tokens = int(llm_data.get("max_tokens", env("HIVE_MAX_TOKENS", cfg.llm.max_tokens)))
     cfg.default_top_k = int(data.get("default_top_k", env("HIVE_TOP_K", cfg.default_top_k)))
@@ -87,6 +92,8 @@ def save_config(cfg: AppConfig) -> None:
             "ollama_model": cfg.llm.ollama_model,
             "lmstudio_url": cfg.llm.lmstudio_url,
             "lmstudio_model": cfg.llm.lmstudio_model,
+            "nvidia_url": cfg.llm.nvidia_url,
+            "nvidia_model": cfg.llm.nvidia_model,
             "temperature": cfg.llm.temperature,
             "max_tokens": cfg.llm.max_tokens,
         },

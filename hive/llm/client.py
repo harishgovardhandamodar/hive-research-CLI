@@ -4,17 +4,20 @@ from hive.config import AppConfig
 from .base import ChatMessage, ChatResponse
 from .lmstudio import LMStudioProvider
 from .ollama import OllamaProvider
+from .nvidia import NvidiaProvider
 
 
 def get_provider(cfg: AppConfig):
-    """Auto-detect: prefer whichever health-checks ok, else fallback to Ollama."""
+    """Auto-detect: Ollama -> LM Studio -> Nvidia NIM, else fallback."""
     llm = cfg.llm
     if llm.provider == "ollama":
         return OllamaProvider(llm.ollama_url, llm.ollama_model, llm.timeout_s)
     if llm.provider == "lmstudio":
         return LMStudioProvider(llm.lmstudio_url, llm.lmstudio_model, llm.timeout_s)
+    if llm.provider == "nvidia":
+        return NvidiaProvider(llm.nvidia_url, llm.nvidia_model, llm.timeout_s)
 
-    # auto
+    # auto — local-first, prefers fastest healthy
     oll = OllamaProvider(llm.ollama_url, llm.ollama_model, llm.timeout_s)
     ok, _ = oll.health()
     if ok:
@@ -23,7 +26,10 @@ def get_provider(cfg: AppConfig):
     ok2, _ = lms.health()
     if ok2:
         return lms
-    # default to ollama even if unhealthy — caller will surface error
+    nvd = NvidiaProvider(llm.nvidia_url, llm.nvidia_model, llm.timeout_s)
+    ok3, _ = nvd.health()
+    if ok3:
+        return nvd
     return oll
 
 
@@ -34,12 +40,10 @@ def _fallback_model(prov, requested: str) -> str | None:
             return None
         if requested in models:
             return requested
-        # try base name without tag
         base = requested.split(":")[0]
         for m in models:
             if m.startswith(base):
                 return m
-        # just use first
         return models[0]
     except Exception:
         return None
@@ -53,7 +57,6 @@ def chat(cfg: AppConfig, messages: list[ChatMessage], **kwargs) -> ChatResponse:
     try:
         return prov.chat(messages, temperature=temp, max_tokens=max_tokens, **kwargs)
     except Exception as e:
-        # try fallback model on 404 / model not found
         if "404" in str(e) or "not found" in str(e).lower():
             fb = _fallback_model(prov, requested)
             if fb and fb != requested:
