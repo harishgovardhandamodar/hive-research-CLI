@@ -38,7 +38,7 @@ MENU = [
     ("doctor", "Doctor"),
 ]
 
-HELP_TEXT = """**Hive Research TUI** — local Feynman workbench (Ollama / LM Studio)
+HELP_TEXT = """**Hive Research - A Local research companion** — local research companion (Ollama / LM Studio)
 
 - Type a topic in the input and press Enter (or click Run).
 - Left menu: choose workflow. `Rank` shows deterministic PaperRank; `DeepResearch` etc. run full LLM synthesis via local model.
@@ -63,7 +63,7 @@ if _HAS_TEXTUAL:
         DataTable { height: auto; }
         """
 
-        TITLE = "Hive Research — local Feynman clone"
+        TITLE = "Hive Research - A Local research companion"
         BINDINGS = [
             Binding("q", "quit", "Quit"),
             Binding("f", "focus_input", "Focus input"),
@@ -100,7 +100,7 @@ if _HAS_TEXTUAL:
         def on_mount(self) -> None:
             self.query_one("#query").focus()
             self._refresh_status()
-            self.query_one("#output", RichLog).write("[dim]Welcome to Hive Research TUI — press ? for help[/dim]")
+            self.query_one("#output", RichLog).write("[dim]Welcome to Hive Research - A Local research companion — press ? for help[/dim]")
 
         def _refresh_status(self):
             prov = get_provider(self.cfg)

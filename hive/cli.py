@@ -17,7 +17,7 @@ from hive.papers import openalex, arxiv, rank as rank_mod, resolver
 from hive.research.workflows import search_and_rank, enrich_full_text, run_workflow
 from hive.research.session import list_sessions
 
-app = typer.Typer(add_completion=False, rich_markup_mode="markdown", help="Hive Research — local Feynman clone (Ollama/LM Studio)")
+app = typer.Typer(add_completion=False, rich_markup_mode="markdown", help="Hive Research - A Local research companion (Ollama/LM Studio)")
 console = Console()
 
 # ── Hive-Machine sub-app (Perplexity Computer) ───────────────────────
@@ -216,7 +216,7 @@ def watch(topic: str = typer.Argument(..., help="Topic"), top: int = typer.Optio
 
 @app.command("tui")
 def tui_cmd():
-    """Launch Hive Research TUI — terminal workbench (local, Ollama/LM Studio)."""
+    """Launch Hive Research - A Local research companion — terminal workbench (local, Ollama/LM Studio)."""
     try:
         from hive.tui.app import run
     except ImportError as e:
@@ -466,7 +466,7 @@ def main_callback(ctx: typer.Context, version: bool = typer.Option(False, "--ver
         raise typer.Exit()
     if ctx.invoked_subcommand is None:
         # interactive REPL
-        console.print(Markdown(f"# Hive Research {__version__}\nLocal Feynman clone — Ollama / LM Studio only.\n\nType a question, or `help` for commands. `exit` to quit.\nTry `hive tui` for full terminal workbench.\n"))
+        console.print(Markdown(f"# Hive Research - A Local research companion {__version__}\nLocal research companion — Ollama / LM Studio only.\n\nType a question, or `help` for commands. `exit` to quit.\nTry `hive tui` for full terminal workbench.\n"))
         cfg = _cfg()
         prov = get_provider(cfg)
         ok, msg = prov.health()
