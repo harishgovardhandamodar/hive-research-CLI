@@ -13,3 +13,7 @@ exports/
 output/
 web/node_modules/
 !web/dist/
+# hive-machine 3-tier: local-only never committed (sensitive, private datasets, full logs)
+**/local-only/**
+**/local-only
+local-only/

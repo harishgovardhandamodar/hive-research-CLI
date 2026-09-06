@@ -127,6 +127,79 @@ All 8 tools use `_jail`. `list_files`, `read_file`, `write_file`, `delete_path` 
 
 ---
 
+## 3b. 3-Tier Folder Structure (Every Workflow)
+
+Every workflow `<name>` gets **3 isolated tiers** — enforced by `hive/machine/access.py:1` + `hive/machine/__init__.py:1` `workflow_dirs()`:
+
+```mermaid
+graph TD
+    WF[Workflow: my_report<br/>~/.hive/machine/workflows/my_report.yaml<br/>access: core-workflow] --> DEF[Definition 3-tier<br/>workflows/my_report/]
+    WF --> WS[Workspace 3-tier<br/>workspace/my_report/]
+    DEF --> L1[local-only/<br/>datasets/ sensitive<br/>reports/ private<br/>logs/ full<br/>.gitignore *]
+    DEF --> C1[core-workflow/<br/>reports/ web-allowed<br/>artifacts/<br/>logs/ redacted<br/>README]
+    DEF --> P1[public/<br/>reports/ public<br/>artifacts/<br/>logs/ public<br/>README]
+    WS --> L2[local-only/<br/>datasets/<br/>reports/<br/>artifacts/<br/>logs/]
+    WS --> C2[core-workflow/<br/>reports/<br/>artifacts/<br/>logs/]
+    WS --> P2[public/<br/>reports/<br/>artifacts/<br/>logs/]
+    L1 & L2 -.->|never commit<br/>no web| GIT[Git]
+    C1 & C2 -->|web allowed<br/>commit allowed| GIT
+    P1 & P2 -->|all public| GIT
+```
+
+| Tier | Path Example | Web | Commit | Copy Out | Logs | Use For |
+|---|---|---|---|---|---|---|
+| **local-only** | `~/.hive/machine/workspace/<wf>/local-only/datasets/private.csv` | ❌ `web_search/web_fetch` blocked, `llm_web` blocked | ❌ `git commit/push` blocked, `no copies` | ❌ | Full (with secrets) `.gitignore *` | Sensitive datasets, private reports, full logs with secrets |
+| **core-workflow** | `~/.hive/machine/workspace/<wf>/core-workflow/reports/report.md` | ✅ | ✅ (allowed to commit) | ✅ | **Redacted** (private datapoints removed via `sensitive.redact`) | Web research, commits, public repos (excluding private) |
+| **public** | `~/.hive/machine/workspace/<wf>/public/reports/report.md` | ✅ | ✅ | ✅ | Redacted/public | Public reports, artifacts for sharing |
+
+**Enforcement** `hive/machine/access.py:1` `ALLOW` + `check_access(tool, access, args)`:
+
+```mermaid
+flowchart TD
+    S[Step: tool=web_search<br/>access=local-only<br/>args={query: AI}] --> C{check_access}
+    C -->|web false| E[PermissionError: no web in local-only]
+    S2[Step: tool=run_bash<br/>cmd=git commit -m ...<br/>access=local-only] --> C2{check_access}
+    C2 -->|commit false| E2[PermissionError: no commit]
+    S3[Step: tool=write_file<br/>access=core-workflow] --> C3{check_access}
+    C3 -->|web true, commit true| OK[dispatch_tool → audit log<br/>sensitivity critical→ severity 5]
+    OK --> R[Write to tiered path<br/>_tier_path wf/tier/reports/file.md]
+```
+
+- `hive/machine/workflows.py:1` `_tier_path()` maps `path: report.md` + `access: local-only` → `my_report/local-only/reports/report.md` (jailed via `WORKSPACE`), creates 3-tier via `ensure_workflow_dirs()` on `save_workflow` + `run_workflow`.
+- `.gitignore:1` `**/local-only/**` + `**/local-only` ensures `local-only` never committed.
+- `audit.py:1` logs `access` tier, `sensitivity` (critical for local-only secrets), `severity` 5 for blocked attempts.
+
+**Example YAML:**
+
+```yaml
+name: ai_agents_report
+access: core-workflow  # default for workflow
+steps:
+  - id: search
+    tool: web_search
+    args: {query: "AI Agents", top_k: 5}
+    access: core-workflow  # web allowed
+  - id: private_ingest
+    tool: write_file
+    args: {path: "datasets/private.csv", content: "id,secret\n1,abc"}
+    access: local-only     # → workspace/ai_agents_report/local-only/datasets/private.csv (no web, no commit)
+  - id: public_report
+    tool: write_file
+    args: {path: "report.md", content: "# Public\n${search}"}
+    access: public         # → workspace/ai_agents_report/public/reports/report.md (public)
+```
+
+**Verify:**
+
+```bash
+hive machine workflow run ai_agents_report
+# → 3-tier workspace: .../local-only (local-only, .gitignore *) | .../core-workflow (web+commit) | .../public (public)
+ls -R ~/.hive/machine/workspace/ai_agents_report
+# local-only/datasets  core-workflow/reports  public/reports
+cat ~/.hive/machine/workspace/ai_agents_report/local-only/.gitignore # *
+hive machine audit --limit 10  # shows access tier per event
+```
+
 ## 4. Tools (8)
 
 ```mermaid

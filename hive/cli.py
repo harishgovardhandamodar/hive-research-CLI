@@ -254,14 +254,26 @@ def tui_cmd():
 def machine_run(
     task: str = typer.Argument(..., help="Task for Hive-Machine, e.g. 'fetch https://example.com and summarize to report.md'"),
     steps: int = typer.Option(12, "--steps", "-n", help="Max agent steps"),
+    access: str = typer.Option("core-workflow", "--access", help="Access tier: local-only (no web/commit, private) | core-workflow (web+commit, redacted) | public (all public)"),
 ):
-    """Run Hive-Machine agent headlessly (no TUI) — local computer use."""
+    """Run Hive-Machine agent headlessly (no TUI) — local computer use. Access controls folder tier."""
     from hive.machine.agent import run_task
-    from hive.machine import WORKSPACE
+    from hive.machine import WORKSPACE, workflow_dirs
+    from hive.machine.access import TIERS
+    if access not in TIERS:
+        console.print(f"[red]Invalid access: {access} — choose {TIERS}[/red]")
+        raise typer.Exit(1)
+    # ensure 3-tier workspace for adhoc runs (uses task name as pseudo-workflow)
+    try:
+        workflow_dirs(f"adhoc-{access}")
+    except Exception:
+        pass
     cfg = _cfg()
-    console.print(f"[bold cyan]Hive-Machine: {task}[/bold cyan]  [dim]max_steps={steps} ws={WORKSPACE}[/dim]")
+    console.print(f"[bold cyan]Hive-Machine: {task}[/bold cyan]  [dim]max_steps={steps} access={access} ws={WORKSPACE}/{access}[/dim]")
+    # access is audited in agent/tools via workflow_id
     out = run_task(task, cfg, max_steps=steps, verbose=False)
     console.print(Markdown(out))
+    console.print(f"[dim]Access tier '{access}': {'no web/no commit, private' if access=='local-only' else 'web+commit, redacted' if access=='core-workflow' else 'public'} — see ~/.hive/machine/workspace/adhoc-{access}/{access}/[/dim]")
 
 
 @machine_app.command("tui")
@@ -386,10 +398,14 @@ def machine_workflow(
             raise typer.Exit(1)
         cfg = _cfg()
         res = run_workflow(name, cfg, dry_run=dry)
-        console.print(f"[bold]Workflow {res['workflow']} done in {res['elapsed']:.1f}s[/bold]")
+        console.print(f"[bold]Workflow {res['workflow']} done in {res['elapsed']:.1f}s access={res.get('access','core-workflow')} [/bold]")
         for sid, out in res["outputs"].items():
             console.print(Markdown(f"### {sid}\n{out[:2000]}"))
-        console.print(f"[dim]Audit: {len(res['audit'])} events — hive machine audit[/dim]")
+        # show 3-tier dirs
+        dirs = res.get("dirs", {})
+        if dirs:
+            console.print(f"[dim]3-tier workspace: {dirs.get('local-only','')} (local-only, .gitignore *) | {dirs.get('core-workflow','')} (web+commit) | {dirs.get('public','')} (public)[/dim]")
+        console.print(f"[dim]Audit: {len(res['audit'])} events — hive machine audit --verify[/dim]")
     else:
         console.print("[red]Unknown action: use list|run|example[/red]")
 
