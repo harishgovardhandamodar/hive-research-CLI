@@ -48,7 +48,8 @@ services:
       - "8002:8000"   # TSX web dashboard + API (hive web) — 8002 on host to avoid 8000 conflict (ijcb-api)
       - "8003:8001"   # optional second port
     volumes:
-      - hive_data:/root/.hive
+      - ${HOME}/.hive:/root/.hive  # bind host's ~/.hive so http://localhost:8002 shows host's sessions/audit (fixes empty dashboard)
+      # - hive_data:/root/.hive  # isolated volume — uncomment for clean container without host data
       # mount workflows for live editing (optional):
       # - ./workflows:/root/.hive/machine/workflows
     environment:
