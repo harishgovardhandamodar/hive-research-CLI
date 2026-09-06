@@ -1,0 +1,112 @@
+# Hive Research — Local-first Docker Compose
+# Services:
+#  - ollama: local LLM (Ollama API at :11434)
+#  - hive: Hive Research + Hive-Machine + TSX web dashboard (http://localhost:8000)
+#  - open-webui: harishgovardhandamodar/open-webui fork (http://localhost:3000) — connects to ollama + hive tools
+#
+# Usage:
+#   docker compose up -d --build
+#   docker compose logs -f hive
+#   curl http://localhost:8000/api/health
+#   curl http://localhost:8000/  # TSX dashboard (Research + Hive-Machine charts)
+#   docker compose down
+#
+# All LLM / audit / workspace stays local via volumes. No egress except OpenAlex/arXiv/EuropePMC.
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: hive-ollama
+    ports:
+      - "11436:11434"  # host 11436 to avoid 11434/11435 conflicts (host Ollama)
+    volumes:
+      - ollama_data:/root/.ollama
+      # optional: preload model via `docker exec hive-ollama ollama pull llama3.1:8b`
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    # Uncomment for Nvidia GPU (if host has nvidia runtime):
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  hive:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hive-research
+    ports:
+      - "8002:8000"   # TSX web dashboard + API (hive web) — 8002 on host to avoid 8000 conflict (ijcb-api)
+      - "8003:8001"   # optional second port
+    volumes:
+      - hive_data:/root/.hive
+      # mount workflows for live editing (optional):
+      # - ./workflows:/root/.hive/machine/workflows
+    environment:
+      # local-first routing — auto tries Ollama -> LM Studio -> Nvidia NIM
+      # use host Ollama (has models) via host.docker.internal; fallback to ollama service
+      - HIVE_PROVIDER=auto
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - HIVE_OLLAMA_MODEL=llama3.1:8b
+      # LM Studio on host (if running): use host.docker.internal
+      - LMSTUDIO_BASE_URL=http://host.docker.internal:1234/v1
+      - HIVE_LMSTUDIO_MODEL=qwen/qwen3.8-27b
+      # Nvidia NIM on host (if running):
+      - NVIDIA_BASE_URL=http://host.docker.internal:8000/v1
+      - HIVE_NVIDIA_MODEL=meta/llama3-8b-instruct
+      # OpenAlex polite pool
+      # - OPENALEX_MAILTO=you@example.com
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: ["hive", "web", "--host", "0.0.0.0", "--port", "8000"]
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: hive-open-webui
+    ports:
+      - "3001:8080"  # 3001 on host to avoid 3000 conflict (ijcb-frontend)
+    volumes:
+      - open_webui_data:/app/backend/data
+    environment:
+      # point Open WebUI to host Ollama (has models) — fallback to ollama service
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      # also allow host LM Studio/Nvidia via host.docker.internal
+      - ENABLE_OLLAMA_API=true
+      - ENABLE_OPENAI_API=false
+      # hive tools are installed via `pip install -e .` in hive image;
+      # to use hive tools inside Open WebUI, copy openwebui/hive_tools.py
+      # via Admin → Tools → + (see openwebui/README.md)
+    depends_on:
+      hive:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
+    driver: local
+  hive_data:
+    driver: local
+  open_webui_data:
+    driver: local
