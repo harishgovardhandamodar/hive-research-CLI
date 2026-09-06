@@ -48,8 +48,9 @@ services:
       - "8002:8000"   # TSX web dashboard + API (hive web) — 8002 on host to avoid 8000 conflict (ijcb-api)
       - "8003:8001"   # optional second port
     volumes:
-      - hive_data:/root/.hive  # named volume — rebuild-safe (survives docker compose build/up, only deleted on down -v)
-      - ${HOME}/.hive:/host_hive:ro  # host's ~/.hive for initial import / backup (read-only)
+      - ${HOME}/.hive:/root/.hive  # bind host's ~/.hive — persistent, survives rebuilds, dashboard shows host's sessions/audit (fixes lost logs)
+      # - hive_data:/root/.hive  # alternative: isolated named volume (rebuild-safe but empty until seeded) — uncomment to use volume
+      - ${HOME}/.hive:/host_hive:ro  # keep for entrypoint fallback (read-only)
       # mount workflows for live editing (optional):
       # - ./workflows:/root/.hive/machine/workflows
     environment:
