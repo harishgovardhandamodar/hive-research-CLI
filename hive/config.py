@@ -22,7 +22,7 @@ Provider = Literal["ollama", "lmstudio", "nvidia", "auto"]
 
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 DEFAULT_LMSTUDIO_URL = "http://localhost:1234/v1"
-DEFAULT_NVIDIA_URL = "http://localhost:8000/v1"
+DEFAULT_NVIDIA_URL = "http://localhost:8011/v1"  # 8011 to avoid 8000/8001 conflicts (hive/ijcb, vcom-tunnel)
 
 CONFIG_DIR = Path.home() / ".hive"
 CONFIG_FILE = CONFIG_DIR / "config.toml"

@@ -11,7 +11,7 @@ import httpx
 
 from .base import ChatMessage, ChatResponse, LLMProvider
 
-DEFAULT_NIM_URLS = ["http://localhost:8000/v1", "http://localhost:8001/v1", "http://localhost:8011/v1"]
+DEFAULT_NIM_URLS = ["http://localhost:8011/v1", "http://localhost:8001/v1", "http://localhost:8000/v1"]  # 8011 first to avoid 8000/8001 conflicts
 
 class NvidiaProvider(LLMProvider):
     name = "nvidia"
@@ -41,7 +41,12 @@ class NvidiaProvider(LLMProvider):
                     gpu = "nvidia-smi not found"
                 return True, f"ok ({gpu})"
         except Exception as e:
-            return False, str(e)
+            msg = str(e)
+            if "404" in msg or "Not Found" in msg:
+                return False, "not running (optional — no GPU/NIM, use Ollama/LM Studio)"
+            if "nvidia-smi" in msg or "Connection" in msg or "ConnectError" in msg:
+                return False, "not running (optional — macOS has no Nvidia GPU)"
+            return False, msg
 
     def chat(self, messages: list[ChatMessage], **kwargs) -> ChatResponse:
         model = kwargs.get("model", self.model)

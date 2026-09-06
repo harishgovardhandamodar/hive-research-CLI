@@ -16,12 +16,16 @@ export function StatusCards() {
   if (!h) return <div style={{ padding: 12, opacity: 0.6 }}>Checking local providers…</div>
 
   const card = (label: string, value: string) => {
+    const isOptional = value.toLowerCase().includes('optional')
     const ok = value.toLowerCase().includes('ok') || value === '200'
+    const border = ok ? '#1f6b3a' : isOptional ? '#3a2f1a' : '#6b1f1f'
+    const color = ok ? '#7af0a0' : isOptional ? '#ffb86b' : '#ff8e8e'
+    const status = ok ? '✓ local-first' : isOptional ? '○ optional (no GPU)' : '✗ unreachable'
     return (
-      <div style={{ background: '#151a24', border: `1px solid ${ok ? '#1f6b3a' : '#6b1f1f'}`, borderRadius: 10, padding: '12px 14px', minWidth: 160 }}>
+      <div style={{ background: '#151a24', border: `1px solid ${border}`, borderRadius: 10, padding: '12px 14px', minWidth: 160 }}>
         <div style={{ fontSize: 11, opacity: 0.6, letterSpacing: 0.5 }}>{label}</div>
-        <div style={{ fontSize: 13, marginTop: 4, color: ok ? '#7af0a0' : '#ff8e8e', wordBreak: 'break-all' }}>{value.slice(0, 80)}</div>
-        <div style={{ fontSize: 10, marginTop: 6, opacity: 0.5 }}>{ok ? '✓ local-first' : '✗ unreachable'}</div>
+        <div style={{ fontSize: 13, marginTop: 4, color, wordBreak: 'break-all' }}>{value.slice(0, 80)}</div>
+        <div style={{ fontSize: 10, marginTop: 6, opacity: 0.5 }}>{status}</div>
       </div>
     )
   }

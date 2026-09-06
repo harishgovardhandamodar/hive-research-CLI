@@ -60,8 +60,8 @@ services:
       # LM Studio on host (if running): use host.docker.internal
       - LMSTUDIO_BASE_URL=http://host.docker.internal:1234/v1
       - HIVE_LMSTUDIO_MODEL=qwen/qwen3.8-27b
-      # Nvidia NIM on host (if running):
-      - NVIDIA_BASE_URL=http://host.docker.internal:8000/v1
+      # Nvidia NIM on host (if running) — 8011 to avoid 8000/8001 (hive/ijcb, vcom-tunnel); optional on macOS (no GPU)
+      - NVIDIA_BASE_URL=http://host.docker.internal:8011/v1
       - HIVE_NVIDIA_MODEL=meta/llama3-8b-instruct
       # OpenAlex polite pool
       # - OPENALEX_MAILTO=you@example.com
