@@ -137,6 +137,10 @@ class WebHandler(SimpleHTTPRequestHandler):
             wb = qs.get("workbench", [None])[0]
             self._api_memory(wb)
             return
+        if path == "/api/derived":
+            wb = qs.get("workbench", [None])[0]
+            self._api_derived(wb)
+            return
 
         # ── static — serve web/dist if built, else fallback ─────
         if WEB_DIST.exists() and (WEB_DIST / "index.html").exists():
@@ -521,6 +525,12 @@ class WebHandler(SimpleHTTPRequestHandler):
     def _api_memory(self, workbench: str | None = None):
         from hive.learn import query_memory
         rows = query_memory(workbench=workbench, limit=20)
+        self._set_headers()
+        self.wfile.write(json.dumps(rows).encode())
+
+    def _api_derived(self, workbench: str | None = None):
+        from hive.derived import list_derived
+        rows = list_derived(workbench=workbench)
         self._set_headers()
         self.wfile.write(json.dumps(rows).encode())
 

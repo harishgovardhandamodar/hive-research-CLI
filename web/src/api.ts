@@ -52,6 +52,7 @@ export const api = {
   nvidia: () => get<{ gpu: string; models: ModelInfo[] }>('/api/nvidia'),
   ledger: (limit=30, workbench?: string) => get<any[]>(`/api/ledger?limit=${limit}` + (workbench?`&workbench=${encodeURIComponent(workbench)}`:"")),
   workbenches: () => get<any[]>('/api/workbenches'),
+  derived: (workbench?: string) => get<any[]>(`/api/derived` + (workbench?`?workbench=${encodeURIComponent(workbench)}`:"" )),
   learnStatus: () => get<any>('/api/learn_status'),
   memory: (workbench?: string) => get<any[]>(`/api/memory` + (workbench?`?workbench=${encodeURIComponent(workbench)}`:"")),
   workflowDetail: (name: string, type: string = 'machine') => get<{ name: string; type: string; description: string; access: string; steps: any[]; prompt_preview?: string }>('/api/workflow_detail?name=' + encodeURIComponent(name) + '&type=' + encodeURIComponent(type)),

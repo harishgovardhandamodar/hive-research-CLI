@@ -19,6 +19,7 @@ from hive.research.session import list_sessions
 from hive.ledger import log_execution, query_ledger, ledger_stats, verify_ledger, add_feedback  # AGI ledger
 from hive.workbench import list_workbenches, get_workbench, create_workbench, delete_workbench, resolve_workbench  # narrow workbench
 from hive.learn import run_loop, learn_status, rollback, query_memory  # continual learning
+from hive.derived import generate_derived, list_derived  # derived scenarios
 
 app = typer.Typer(add_completion=False, rich_markup_mode="markdown", help="Hive Research - A Local research companion (Ollama/LM Studio)")
 console = Console()
@@ -873,6 +874,69 @@ def learn_cmd(
         console.print(tb)
         return
     console.print(f"[red]Unknown learn action {action}: status|run|rollback|memory[/red]")
+
+
+@app.command("derived")
+def derived_cmd(
+    action: str = typer.Argument("list", help="list|generate|run"),
+    workbench: str = typer.Option(None, "--workbench", "-w", help="Workbench filter"),
+    per_wb: int = typer.Option(2, "--per-wb", help="Per workbench count for generate"),
+    dry: bool = typer.Option(False, "--dry", help="Dry for run"),
+):
+    """Derived experiments — scenario expansion for narrow AGI (robustness, shift, imbalance, privacy, efficiency)."""
+    if action == "list":
+        rows = list_derived(workbench=workbench)
+        if not rows:
+            console.print(f"[dim]No derived for {workbench or 'all'} — run `hive derived generate`[/dim]")
+            return
+        tb = Table(title=f"Derived — {len(rows)} scenarios" + (f" workbench={workbench}" if workbench else ""))
+        tb.add_column("ID", style="cyan")
+        tb.add_column("WB")
+        tb.add_column("Scenario")
+        tb.add_column("Name", overflow="fold")
+        tb.add_column("Param", style="dim")
+        for r in rows[:20]:
+            tb.add_row(r["id"][:8], r.get("workbench","")[:12], r.get("scenario","")[:10], r.get("name","")[:40], r.get("param","")[:20])
+        console.print(tb)
+        console.print(f"[dim]Total {len(rows)} • run `hive derived run --workbench <wb> [--dry]`[/dim]")
+        return
+    if action == "generate":
+        paths = generate_derived(workbench=workbench, per_wb=per_wb)
+        console.print(f"[green]Generated {len(paths)} derived for {workbench or 'all workbenches'}[/green]")
+        for p in paths[:10]:
+            console.print(f"  {p}")
+        log_execution("derived", {"action": "generate", "workbench": workbench, "per_wb": per_wb, "count": len(paths)}, workbench=workbench or "default", status="ok")
+        return
+    if action == "run":
+        rows = list_derived(workbench=workbench)
+        if not rows:
+            console.print(f"[red]No derived to run for {workbench} — generate first[/red]")
+            raise typer.Exit(1)
+        console.print(f"[cyan]Running {len(rows)} derived experiments{' workbench='+workbench if workbench else ''} dry={dry}[/cyan]")
+        import subprocess, sys as _sys, re
+        ok=0
+        for d in rows:
+            wb = d["workbench"]
+            task = d["task"][:180].replace('"', "'")
+            cmd = [_sys.executable, "-m", "hive.cli", "experiment", "run", "--task", task, "--workbench", wb]
+            if dry:
+                cmd.append("--dry")
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            if r.returncode==0:
+                ok+=1
+                m=re.search(r"Experiment (\w+)", r.stdout)
+                eid=m.group(1) if m else "?"
+                # auto feedback
+                try:
+                    add_feedback(eid, 4, f"derived scenario {d['scenario']} {d['param']}")
+                except Exception:
+                    pass
+            else:
+                console.print(f"[red]FAIL {wb} {d['name'][:30]}: {r.stderr[:120]}[/red]")
+        console.print(f"[green]Ran {ok}/{len(rows)} derived[/green]")
+        log_execution("derived", {"action": "run", "workbench": workbench, "count": len(rows), "ok": ok}, workbench=workbench or "default", status="ok")
+        return
+    console.print(f"[red]Unknown derived action {action}: list|generate|run[/red]")
 
 @app.callback(invoke_without_command=True)
 def main_callback(ctx: typer.Context, version: bool = typer.Option(False, "--version", help="Show version")):

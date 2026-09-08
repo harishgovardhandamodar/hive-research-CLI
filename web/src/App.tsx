@@ -17,6 +17,7 @@ export default function App() {
   const [reportContent, setReportContent] = useState<string>('')
   const [researchWfs] = useState<string[]>(['deepresearch','lit','review','audit','replicate','recipe','compare','draft','autoresearch','watch'])
   const [workbenches, setWorkbenches] = useState<any[]>([])
+  const [derived, setDerived] = useState<any[]>([])
   const [ledger, setLedger] = useState<any[]>([])
   const [learnSt, setLearnSt] = useState<any>(null)
   const [memory, setMemory] = useState<any[]>([])
@@ -29,6 +30,7 @@ export default function App() {
     api.workflows().then(setWorkflows).catch(() => {})
     api.reports().then(setReports).catch(()=>{})
     api.workbenches().then(setWorkbenches).catch(()=>{})
+    api.derived().then(setDerived).catch(()=>{})
     api.ledger().then(setLedger).catch(()=>{})
     api.learnStatus().then(setLearnSt).catch(()=>{})
     api.memory().then(setMemory).catch(()=>{})
@@ -152,7 +154,7 @@ export default function App() {
               <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 12 }}>Profiles scope datasets, tools, model, evaluation. Ledger gathers all commands (hash-chained). Learn loop scores & promotes to memory (continual reinforcement). <code>hive workbench | hive ledger | hive learn</code> • auto logs every CLI via <code>main_callback</code>.</div>
               <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 12, fontSize: 12 }}>
                 <div style={{ background: '#11151d', borderRadius: 8, padding: 10, border: '1px solid #1f2533', maxHeight: 420, overflowY: 'auto' }}>
-                  <div style={{ fontWeight: 600, marginBottom: 8, display: 'flex', gap: 6 }}>Workbenches <span style={{ opacity: 0.5 }}>{workbenches.length}</span> <button onClick={() => { api.workbenches().then(setWorkbenches); api.ledger().then(setLedger); api.learnStatus().then(setLearnSt); api.memory().then(setMemory); }} style={{ marginLeft: 'auto', background: '#0f1320', border: '1px solid #2a3347', color: '#889', borderRadius: 6, padding: '2px 6px', fontSize: 10, cursor: 'pointer' }}>Refresh</button></div>
+                  <div style={{ fontWeight: 600, marginBottom: 8, display: 'flex', gap: 6 }}>Workbenches <span style={{ opacity: 0.5 }}>{workbenches.length}</span> <span style={{ opacity: 0.5, fontSize: 10 }}>• {derived.length} derived</span> <button onClick={() => { api.workbenches().then(setWorkbenches); api.derived().then(setDerived); api.ledger().then(setLedger); api.learnStatus().then(setLearnSt); api.memory().then(setMemory); }} style={{ marginLeft: 'auto', background: '#0f1320', border: '1px solid #2a3347', color: '#889', borderRadius: 6, padding: '2px 6px', fontSize: 10, cursor: 'pointer' }}>Refresh</button></div>
                   {workbenches.length ? workbenches.map((wb:any) => (
                     <div key={wb.name} onClick={() => { setWbFilter(wb.name); api.ledger(30, wb.name).then(setLedger); api.memory(wb.name).then(setMemory); }} style={{ padding: '6px 8px', borderRadius: 6, cursor: 'pointer', background: wbFilter===wb.name ? '#1e2a44' : 'transparent', border: '1px solid ' + (wbFilter===wb.name ? '#4f8cff' : 'transparent'), marginBottom: 4 }}>
                       <div style={{ fontFamily: 'monospace', fontWeight: 600 }}>{wb.name}</div>
@@ -160,7 +162,17 @@ export default function App() {
                       <div style={{ opacity: 0.5, fontSize: 10 }}>{wb.domain} • {wb.source} • {wb.datasets?.length || 0} datasets</div>
                     </div>
                   )) : <div style={{ opacity: 0.5 }}>No workbenches — builtins auto-seed (fox-fraud, eda-credit, privacy, quai-lora, diabetes)</div>}
-                  <div style={{ marginTop: 8, fontSize: 10, opacity: 0.4 }}>CLI: <code>hive workbench list|show|create</code> • <code>HIVE_EXPERIMENTS_DIR</code></div>
+                  <div style={{ marginTop: 10, borderTop: '1px solid #1f2533', paddingTop: 8 }}>
+                    <div style={{ fontWeight: 600, fontSize: 11, marginBottom: 6, display: 'flex', gap: 6 }}>Derived scenarios <span style={{ opacity: 0.5 }}>{derived.filter((d:any)=> !wbFilter || d.workbench===wbFilter).length}</span> {wbFilter ? <span style={{ fontSize: 10, opacity: 0.5 }}>for {wbFilter}</span> : null}</div>
+                    {derived.length ? derived.filter((d:any)=> !wbFilter || d.workbench===wbFilter).slice(0,8).map((d:any)=> (
+                      <div key={d.id} style={{ background: '#0b0e14', borderRadius: 6, padding: '6px', marginBottom: 4, border: '1px solid #1f2533' }}>
+                        <div style={{ fontSize: 11, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.name.slice(0,45)}</div>
+                        <div style={{ fontSize: 10, opacity: 0.6 }}>{d.scenario} • {d.param} • <span style={{ opacity: 0.5 }}>{d.workbench}</span></div>
+                      </div>
+                    )) : <div style={{ opacity: 0.5, fontSize: 11 }}>No derived — run <code>hive derived generate</code></div>}
+                    <div style={{ fontSize: 10, opacity: 0.4, marginTop: 4 }}>Scenarios: robustness, shift, imbalance, privacy, efficiency — narrow AGI help</div>
+                  </div>
+                  <div style={{ marginTop: 8, fontSize: 10, opacity: 0.4 }}>CLI: <code>hive workbench list|show|create</code> • <code>hive derived list|generate|run</code> • <code>HIVE_EXPERIMENTS_DIR</code></div>
                 </div>
                 <div style={{ display: 'grid', gap: 10 }}>
                   <div style={{ background: '#11151d', borderRadius: 8, padding: 10, border: '1px solid #1f2533' }}>
@@ -205,7 +217,7 @@ export default function App() {
               <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Experiment — narrow AGI run (gathers all)</div>
               <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 8 }}>Quick run in workbench: <code>hive experiment run --workbench {wbFilter || 'fox-fraud'} --task "describe fraud pattern" [--dry]</code>. Every run logs to ledger, can be rated via <code>hive feedback &lt;id&gt; --reward 5</code>, then <code>hive learn run</code> reinforces.</div>
               <div style={{ background: '#11151d', borderRadius: 8, padding: 10, border: '1px solid #1f2533', fontSize: 11 }}>
-                <div style={{ background: '#0b0e14', border: '1px solid #4f8cff', borderRadius: 6, padding: '6px 8px', marginBottom: 6 }}>📄 <b>Collected Reports:</b> <a href="/api/report?path=default/reports/narrow_agi_report.md" target="_blank" style={{ color: '#4f8cff' }}>narrow_agi_report.md</a> (2 exp) • <a href="/api/report?path=default/reports/all_experiments_report.md" target="_blank" style={{ color: '#4f8cff' }}>all_experiments_report.md</a> (ALL 50 exp, 14 workbenches, samples) • in Reports → click</div>
+                <div style={{ background: '#0b0e14', border: '1px solid #4f8cff', borderRadius: 6, padding: '6px 8px', marginBottom: 6 }}>📄 <b>Collected Reports:</b> <a href="/api/report?path=default/reports/narrow_agi_report.md" target="_blank" style={{ color: '#4f8cff' }}>narrow_agi_report.md</a> (2 exp) • <a href="/api/report?path=default/reports/all_experiments_report.md" target="_blank" style={{ color: '#4f8cff' }}>all_experiments_report.md</a> (50) • <a href="/api/report?path=default/reports/all_experiments_derived_report.md" target="_blank" style={{ color: '#4f8cff' }}>all_experiments_derived_report.md</a> (85 = 50 + 35 derived, scenarios) • in Reports → click</div>
                 <div>Sources: <code>~/.hive/ledger.db</code> (hash chain) + <code>~/.hive/hive.db</code> (sessions) + <code>~/.hive/machine/audit.db</code> (tools) • Personal-experiments auto-indexed</div>
                 <div style={{ marginTop: 8 }}><WorkbenchCharts /></div>
                 <div style={{ opacity: 0.6 }}>AGI workbench value: narrow domain + continual data + reinforcement = ideal small AGI (specialized, not general).</div>

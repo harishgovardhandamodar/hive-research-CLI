@@ -8,11 +8,13 @@ export function WorkbenchCharts() {
   const [learnSt, setLearnSt] = useState<any>(null)
   const [ledger, setLedger] = useState<any[]>([])
   const [workbenches, setWorkbenches] = useState<any[]>([])
+  const [derived, setDerived] = useState<any[]>([])
 
   const load = () => {
     api.learnStatus().then(setLearnSt).catch(()=>{})
     api.ledger(100).then(setLedger).catch(()=>{})
     api.workbenches().then(setWorkbenches).catch(()=>{})
+    api.derived().then(setDerived).catch(()=>{})
   }
   useEffect(() => { load(); const id=setInterval(load, 5000); return ()=>clearInterval(id) }, [])
 
@@ -99,6 +101,25 @@ export function WorkbenchCharts() {
             </BarChart>
           </ResponsiveContainer>
           <div style={{ fontSize: 10, opacity: 0.5 }}>{learnSt.memory?.total || 0} reinforced entries (reward≥4) — <code>hive learn run</code> promotes.</div>
+        </div>
+
+        {/* Derived per workbench */}
+        <div style={{ background: '#0b0e14', border: '1px solid #1f2533', borderRadius: 8, padding: 12 }}>
+          <div style={{ fontWeight: 600, fontSize: 11, marginBottom: 4 }}>Derived — Scenarios per Workbench ({derived.length} total)</div>
+          <ResponsiveContainer width="100%" height={160}>
+            <BarChart data={(() => {
+              const counts: Record<string, number> = {}
+              derived.forEach((d:any)=> counts[d.workbench]=(counts[d.workbench]||0)+1)
+              return Object.entries(counts).map(([name,count])=> ({ name: name.slice(0,12), count }))
+            })()}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1f2533" />
+              <XAxis dataKey="name" tick={{ fill: '#889', fontSize: 10 }} interval={0} angle={-20} textAnchor="end" height={40} />
+              <YAxis tick={{ fill: '#889', fontSize: 10 }} />
+              <Tooltip contentStyle={{ background: '#0f1320', border: '1px solid #2a3347', fontSize: 11 }} />
+              <Bar dataKey="count" fill={COLORS[3]} radius={[4,4,0,0]} />
+            </BarChart>
+          </ResponsiveContainer>
+          <div style={{ fontSize: 10, opacity: 0.5 }}>Scenarios: robustness, shift, imbalance, privacy, efficiency — help narrow AGI</div>
         </div>
 
         {/* Command pie */}
