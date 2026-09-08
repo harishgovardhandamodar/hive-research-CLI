@@ -1,6 +1,7 @@
 # Hive-Machine — Complete Guide
 
 > **Local Perplexity Computer** — sandboxed `~/.hive/machine/workspace` (jailed, no escape), 8 tools, local LLM only (Ollama / LM Studio / Nvidia NIM via **Nvidia-PAIR**), audited proofs, end-to-end workflows, and web dashboard. No cloud.
+> **Folder map:** See [`FOLDERS.md`](FOLDERS.md) for full source/runtime/3-tier tree.
 
 **For:** `hive machine` (CLI) + `hive-machine` (alias) + TUI (`hive machine`/`hive machine tui`) + web `http://localhost:8002` + Docker.
 
@@ -456,7 +457,7 @@ graph TD
 
 ```mermaid
 graph TD
-    H[Host ~/.hive<br/>audit.db 48K, hive.db 32K<br/>machine/workspace] --> B[Bind ${HOME}/.hive:/root/.hive<br/>rebuild-safe]
+    H[Host ~/.hive<br/>audit.db 48K, hive.db 32K<br/>machine/workspace] --> B[Bind Mount ~/.hive<br/>rebuild-safe]
     B --> C[Container /root/.hive<br/>hive_data named volume<br/>fallback /host_hive:ro]
     C --> E[Entrypoint<br/>if /root/.hive empty and /host_hive has data<br/>cp -a /host_hive/. /root/.hive]
     E --> S[Server hive web 8000<br/>TSX + API]

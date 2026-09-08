@@ -27,6 +27,14 @@ DEFAULT_NVIDIA_URL = "http://localhost:8011/v1"  # 8011 to avoid 8000/8001 confl
 CONFIG_DIR = Path.home() / ".hive"
 CONFIG_FILE = CONFIG_DIR / "config.toml"
 DB_FILE = CONFIG_DIR / "hive.db"
+# legacy experiments (personal-experiments) — local cache for dashboard
+# priority: HIVE_EXPERIMENTS_DIR env > /personal-experiments (docker) > ~/codebase/personal-experiments
+_candidates = []
+if os.environ.get("HIVE_EXPERIMENTS_DIR"):
+    _candidates.append(Path(os.environ["HIVE_EXPERIMENTS_DIR"]))
+_candidates.append(Path("/personal-experiments"))
+_candidates.append(Path.home() / "codebase" / "personal-experiments")
+EXPERIMENTS_DIR = next((p for p in _candidates if p.exists()), None)
 
 
 @dataclass

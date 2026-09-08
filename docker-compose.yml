@@ -51,6 +51,8 @@ services:
       - "${HOME}/.hive:/root/.hive"  # bind host's ~/.hive — persistent, survives rebuilds, dashboard shows host's sessions/audit (fixes lost logs)
       # - hive_data:/root/.hive  # alternative: isolated named volume (rebuild-safe but empty until seeded) — uncomment to use volume
       - "${HOME}/.hive:/host_hive:ro"  # keep for entrypoint fallback (read-only)
+      - "${HOME}/codebase/personal-experiments:/personal-experiments:ro"  # legacy experiments for dashboard (read-only, HIVE_EXPERIMENTS_DIR)
+      - "./output:/app/output:ro"
       # mount workflows for live editing (optional):
       # - ./workflows:/root/.hive/machine/workflows
     environment:
@@ -65,6 +67,7 @@ services:
       # Nvidia NIM on host (if running) — 8011 to avoid 8000/8001 (hive/ijcb, vcom-tunnel); optional on macOS (no GPU)
       - NVIDIA_BASE_URL=http://host.docker.internal:8011/v1
       - HIVE_NVIDIA_MODEL=meta/llama3-8b-instruct
+      - HIVE_EXPERIMENTS_DIR=/personal-experiments
       # OpenAlex polite pool
       # - OPENALEX_MAILTO=you@example.com
     depends_on:

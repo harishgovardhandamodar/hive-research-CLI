@@ -50,4 +50,11 @@ export const api = {
   workflows: () => get<{ name: string; path: string }[]>('/api/workflows'),
   files: () => get<{ path: string; type: string; size: number }[]>('/api/files'),
   nvidia: () => get<{ gpu: string; models: ModelInfo[] }>('/api/nvidia'),
+  ledger: (limit=30, workbench?: string) => get<any[]>(`/api/ledger?limit=${limit}` + (workbench?`&workbench=${encodeURIComponent(workbench)}`:"")),
+  workbenches: () => get<any[]>('/api/workbenches'),
+  learnStatus: () => get<any>('/api/learn_status'),
+  memory: (workbench?: string) => get<any[]>(`/api/memory` + (workbench?`?workbench=${encodeURIComponent(workbench)}`:"")),
+  workflowDetail: (name: string, type: string = 'machine') => get<{ name: string; type: string; description: string; access: string; steps: any[]; prompt_preview?: string }>('/api/workflow_detail?name=' + encodeURIComponent(name) + '&type=' + encodeURIComponent(type)),
+  reports: () => get<{ path: string; full_path: string; type: string; workflow: string; name: string; size: number; mtime: number; tier?: string }[]>('/api/reports'),
+  report: (path: string) => fetch('/api/report?path=' + encodeURIComponent(path)).then(r => { if(!r.ok) throw new Error(r.status + ' ' + path); const ct = r.headers.get('content-type') || ''; if(ct.includes('json')) return r.json().then(d => JSON.stringify(d, null, 2)); return r.text(); }),
 }

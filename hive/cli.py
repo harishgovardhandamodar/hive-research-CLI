@@ -16,6 +16,9 @@ from hive.llm import ChatMessage, chat, chat_stream, get_provider
 from hive.papers import openalex, arxiv, rank as rank_mod, resolver
 from hive.research.workflows import search_and_rank, enrich_full_text, run_workflow
 from hive.research.session import list_sessions
+from hive.ledger import log_execution, query_ledger, ledger_stats, verify_ledger, add_feedback  # AGI ledger
+from hive.workbench import list_workbenches, get_workbench, create_workbench, delete_workbench, resolve_workbench  # narrow workbench
+from hive.learn import run_loop, learn_status, rollback, query_memory  # continual learning
 
 app = typer.Typer(add_completion=False, rich_markup_mode="markdown", help="Hive Research - A Local research companion (Ollama/LM Studio)")
 console = Console()
@@ -568,21 +571,32 @@ def models_cmd():
 
 
 @app.command("sessions")
-def sessions_cmd(limit: int = typer.Option(20, "--limit", "-n")):
-    """Browse research artifacts (like /outputs)."""
-    rows = list_sessions(limit=limit)
+def sessions_cmd(limit: int = typer.Option(20, "--limit", "-n"), legacy: bool = typer.Option(False, "--legacy", help="Include personal-experiments legacy runs"), all_: bool = typer.Option(False, "--all", help="Include DB + legacy (default if legacy exists)")):
+    """Browse research artifacts (like /outputs). Merges ~/.hive/hive.db + personal-experiments when present."""
+    from hive.config import EXPERIMENTS_DIR, DB_FILE
+    from hive.research.session import list_all_sessions, list_legacy_sessions
+    use_all = legacy or all_ or (EXPERIMENTS_DIR is not None and EXPERIMENTS_DIR.exists())
+    rows = list_all_sessions(limit=limit) if use_all else list_sessions(limit=limit)
     if not rows:
-        console.print("[dim]No sessions yet[/dim]")
+        console.print("[dim]No sessions yet — run `hive report \"Your topic\"`, `hive deepresearch \"...\"`, or place experiments in ~/codebase/personal-experiments[/dim]")
+        if EXPERIMENTS_DIR is None:
+            console.print(f"[dim]DB: {DB_FILE} (SQLite) • set HIVE_EXPERIMENTS_DIR to index legacy folder[/dim]")
+        else:
+            console.print(f"[dim]Checked legacy: {EXPERIMENTS_DIR} (no runs found) • DB: {DB_FILE}[/dim]")
         return
-    t = Table()
-    t.add_column("ID")
-    t.add_column("Topic")
+    t = Table(title=f"Sessions — {len(rows)} shown (DB + legacy)" if use_all else "Sessions")
+    t.add_column("ID", style="cyan")
+    t.add_column("Topic", overflow="fold")
     t.add_column("Created")
+    t.add_column("Source", style="dim")
     import datetime
     for sid, topic, ts in rows:
         dt = datetime.datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M") if ts else ""
-        t.add_row(sid, topic, dt)
+        src = "legacy" if topic.startswith("[legacy]") else "db"
+        t.add_row(sid, topic.replace("[legacy] ", "")[:80], dt, src)
     console.print(t)
+    if EXPERIMENTS_DIR and EXPERIMENTS_DIR.exists():
+        console.print(f"[dim]DB: {DB_FILE} • legacy: {EXPERIMENTS_DIR} • `hive sessions --legacy` to force[/dim]")
 
 
 @app.command("doctor")
@@ -605,6 +619,43 @@ def doctor():
                 console.print(f"  {name}: {'[green]ok[/green]' if r.status_code==200 else f'[red]{r.status_code}[/red]'}")
         except Exception as e:
             console.print(f"  {name}: [red]{e}[/red]")
+    from hive.config import DB_FILE, CONFIG_DIR, EXPERIMENTS_DIR
+    from hive.research.session import list_sessions
+    import sqlite3
+    console.print(f"[bold]Store:[/bold] DB {DB_FILE} (SQLite)")
+    try:
+        con=sqlite3.connect(DB_FILE)
+        sc=con.execute("SELECT count(*) FROM sessions").fetchone()[0]
+        ac=con.execute("SELECT count(*) FROM artifacts").fetchone()[0]
+        console.print(f"  sessions={sc} artifacts={ac} • `hive sessions` / `hive sessions --legacy`")
+        con.close()
+    except Exception as e:
+        console.print(f"  [red]DB error {e}[/red]")
+    if EXPERIMENTS_DIR:
+        from hive.research.session import list_legacy_sessions
+        legacy=list_legacy_sessions(limit=5)
+        console.print(f"  legacy {EXPERIMENTS_DIR}: {len(legacy)} runs • `hive sessions --legacy` • HIVE_EXPERIMENTS_DIR to override")
+        if legacy:
+            for sid,topic,ts in legacy[:3]:
+                console.print(f"    - {sid} {topic[:60]}")
+    else:
+        console.print(f"  [dim]No legacy dir — set HIVE_EXPERIMENTS_DIR or use ~/codebase/personal-experiments[/dim]")
+    try:
+        out_cnt=len(list((__import__('pathlib').Path.cwd() / 'output').glob('*.md'))) if (__import__('pathlib').Path.cwd() / 'output').exists() else 0
+        ws_cnt=len(list((__import__('pathlib').Path.home() / '.hive' / 'machine' / 'workspace').glob('*'))) if (__import__('pathlib').Path.home() / '.hive' / 'machine' / 'workspace').exists() else 0
+        console.print(f"  output/ {out_cnt} md • machine workspace {ws_cnt} workflows")
+    except Exception:
+        pass
+    try:
+        from hive.ledger import ledger_stats as _ls
+        from hive.learn import learn_status as _lrn
+        ls=_ls()
+        console.print(f"  ledger {ls['total']} entries avg_reward {ls['avg_reward'] or 0:.2f} • `hive ledger --verify`")
+        lrn=_lrn()
+        console.print(f"  learn memory {lrn['memory']['total']} • workbenches {len(__import__('hive.workbench.profiles', fromlist=['list_workbenches']).list_workbenches())} • `hive learn status`")
+    except Exception:
+        pass
+    console.print(f"[bold]Web:[/bold] `hive web` / `hive serve --web` → http://localhost:8002 (dashboard) • web/dist {'ok' if (__import__('pathlib').Path('web/dist/index.html').exists()) else 'missing — run npm run build --prefix web'}")
 
 
 @app.command("dashboard")
@@ -614,11 +665,236 @@ def dashboard(limit: int = typer.Option(50, "--limit", "-n", help="Audit events"
     render_full_dashboard(limit=limit)
 
 
+
+@app.command("ledger")
+def ledger_cmd(
+    limit: int = typer.Option(20, "--limit", "-n", help="Entries"),
+    workbench: str = typer.Option(None, "--workbench", "-w", help="Filter by workbench"),
+    verify: bool = typer.Option(False, "--verify", help="Verify hash chain"),
+):
+    """Unified execution ledger — all commands, tool calls, LLM, paper, artifacts (auditable, hash-chained)."""
+    if verify:
+        ok, msg = verify_ledger()
+        console.print(f"[{'green' if ok else 'red'}]{msg}[/{'green' if ok else 'red'}]")
+        return
+    rows = query_ledger(limit=limit, workbench=workbench)
+    if not rows:
+        console.print("[dim]No ledger entries — run any hive command (they auto-log) or `hive experiment run <wb> --task '...'`[/dim]")
+        return
+    tb = Table(title=f"Ledger — {len(rows)} latest" + (f" workbench={workbench}" if workbench else ""))
+    tb.add_column("ID", style="cyan")
+    tb.add_column("TS")
+    tb.add_column("WB")
+    tb.add_column("Command", overflow="fold")
+    tb.add_column("Reward", style="magenta")
+    tb.add_column("Hash", style="dim")
+    import datetime
+    for r in rows:
+        dt = datetime.datetime.fromtimestamp(r["ts"]).strftime("%m-%d %H:%M") if r.get("ts") else ""
+        tb.add_row(r["id"], dt, r.get("workbench","")[:12], r.get("command","")[:40], str(r.get("reward") or "-"), (r.get("hash") or "")[:8])
+    console.print(tb)
+    try:
+        log_execution("ledger", {"limit": limit, "workbench": workbench, "verify": verify}, workbench=workbench or "default", status="ok")
+    except Exception:
+        pass
+
+
+@app.command("feedback")
+def feedback_cmd(
+    execution_id: str = typer.Argument(..., help="Ledger execution id (from `hive ledger`)"),
+    reward: int = typer.Option(..., "--reward", "-r", min=1, max=5, help="1-5 (1=bad, 5=excellent)"),
+    note: str = typer.Option("", "--note", "-m", help="Optional note"),
+):
+    """Give reinforcement reward for an execution (feeds continual learning loop)."""
+    try:
+        fid = add_feedback(execution_id, reward, note)
+        console.print(f"[green]Feedback {fid} → {execution_id} reward={reward}[/green] {note[:60]}")
+        log_execution("feedback", {"execution_id": execution_id, "reward": reward, "note": note}, status="ok")
+    except Exception as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command("workbench")
+def workbench_cmd(
+    action: str = typer.Argument("list", help="list|create|show|delete|run"),
+    name: str = typer.Argument(None, help="Workbench name"),
+    description: str = typer.Option(None, "--desc", help="Description for create"),
+    domain: str = typer.Option(None, "--domain", help="Domain for create"),
+):
+    """Narrow-spaced ideal AGI workbench — domain-specialized profiles (fox-fraud, eda-credit, privacy, quai-lora, diabetes)."""
+    if action == "list":
+        wbs = list_workbenches()
+        if not wbs:
+            console.print("[dim]No workbenches — builtins will auto-seed on next list[/dim]")
+            return
+        tb = Table(title=f"Workbenches — {len(wbs)} narrow AGI profiles")
+        tb.add_column("Name", style="cyan")
+        tb.add_column("Domain")
+        tb.add_column("Source", style="dim")
+        tb.add_column("Description", overflow="fold")
+        tb.add_column("Path", style="dim", overflow="fold")
+        for wb in wbs:
+            tb.add_row(wb["name"], wb.get("domain","")[:12], wb.get("source",""), wb.get("description","")[:50], wb.get("path","")[-40:])
+        console.print(tb)
+        console.print("[dim]Run `hive experiment run <workbench> --task '...'` or `hive workbench show <name>`[/dim]")
+        log_execution("workbench", {"action": "list"}, status="ok")
+        return
+    if action == "show":
+        if not name:
+            console.print("[red]Need name: hive workbench show <name>[/red]")
+            raise typer.Exit(1)
+        wb = get_workbench(name)
+        if not wb:
+            console.print(f"[red]Not found: {name}[/red]")
+            raise typer.Exit(1)
+        console.print_json(data=wb)
+        return
+    if action == "create":
+        if not name:
+            console.print("[red]Need name: hive workbench create <name> --desc '...' --domain X[/red]")
+            raise typer.Exit(1)
+        p = create_workbench(name, {"description": description or f"Custom {name}", "domain": domain or name, "datasets": [], "allowed_tools": ["read_file","run_python"]})
+        console.print(f"[green]Created {p}[/green]")
+        log_execution("workbench", {"action": "create", "name": name}, workbench=name, status="ok")
+        return
+    if action == "delete":
+        if not name:
+            console.print("[red]Need name[/red]")
+            raise typer.Exit(1)
+        ok = delete_workbench(name)
+        console.print(f"[{'green' if ok else 'red'}]{'Deleted' if ok else 'Not found'} {name}[/{'green' if ok else 'red'}]")
+        return
+    console.print(f"[red]Unknown action {action}: use list|create|show|delete[/red]")
+
+
+@app.command("experiment")
+def experiment_cmd(
+    action: str = typer.Argument("run", help="run|list"),
+    task: str = typer.Option(None, "--task", "-t", help="Task/topic for the experiment"),
+    workbench: str = typer.Option(None, "--workbench", "-w", help="Narrow workbench profile"),
+    dry: bool = typer.Option(False, "--dry", help="Dry run (no LLM)"),
+):
+    """Narrow AGI experimentation — gather all commands/executions, audited, workbench-scoped."""
+    wb = resolve_workbench(workbench)
+    if action == "list":
+        rows = query_ledger(limit=50, workbench=wb if wb != "default" else None)
+        if not rows:
+            console.print(f"[dim]No experiments for workbench {wb} — run `hive experiment run --workbench {wb} --task '...'`[/dim]")
+            return
+        tb = Table(title=f"Experiments — workbench {wb}")
+        tb.add_column("ID"); tb.add_column("Command"); tb.add_column("Reward"); tb.add_column("TS")
+        import datetime
+        for r in rows[:20]:
+            dt = datetime.datetime.fromtimestamp(r["ts"]).strftime("%m-%d %H:%M") if r.get("ts") else ""
+            tb.add_row(r["id"], r["command"][:50], str(r.get("reward") or "-"), dt)
+        console.print(tb)
+        return
+    if action == "run":
+        if not task:
+            console.print("[red]Need --task 'what to experiment' e.g. hive experiment run --workbench fox-fraud --task 'detect fraud pattern'[/red]")
+            raise typer.Exit(1)
+        eid = log_execution(f"experiment:run", {"task": task, "workbench": wb, "dry": dry}, workbench=wb, status="running")
+        console.print(f"[cyan]Experiment {eid} workbench={wb} task='{task[:60]}' dry={dry}[/cyan]")
+        try:
+            from hive.research.workflows import run_workflow as _rw
+            from hive.config import load_config
+            cfg = load_config()
+            kind = "deepresearch" if "fraud" in wb or "privacy" in wb else "lit"
+            from hive.ledger import log_tool as _lt
+            _lt("experiment_start", {"task": task, "kind": kind}, workbench=wb)
+            if dry:
+                result = f"[dry] would run {kind} on '{task}' in workbench {wb} — ledger {eid}"
+            else:
+                result = _rw(kind, task, cfg)
+                from hive.research.session import new_session, save_artifact
+                sid = new_session(f"experiment:{wb}:{task[:40]}")
+                save_artifact(sid, "report", f"{wb}:{task[:30]}", result[:8000])
+                _lt("experiment_result", {"sid": sid, "len": len(result)}, workbench=wb)
+            console.print(Markdown(result[:3000] if isinstance(result, str) else str(result)[:3000]))
+            from hive.ledger.store import LEDGER_DB
+            import sqlite3
+            con = sqlite3.connect(LEDGER_DB)
+            con.execute("UPDATE executions SET status='ok' WHERE id=?", (eid,))
+            con.commit(); con.close()
+            console.print(f"[green]Done experiment {eid} — give feedback: hive feedback {eid} --reward 5[/green]")
+            console.print(f"[dim]View: hive ledger --workbench {wb} | hive learn run --workbench {wb}[/dim]")
+        except Exception as e:
+            import sqlite3
+            con = sqlite3.connect(LEDGER_DB)
+            try:
+                con.execute("UPDATE executions SET status='error' WHERE id=?", (eid,))
+                con.commit()
+            except Exception:
+                pass
+            con.close()
+            console.print(f"[red]Experiment failed {eid}: {e}[/red]")
+            raise typer.Exit(1)
+
+
+@app.command("learn")
+def learn_cmd(
+    action: str = typer.Argument("status", help="status|run|rollback|memory"),
+    workbench: str = typer.Option(None, "--workbench", "-w", help="Narrow workbench"),
+    iterations: int = typer.Option(10, "--iterations", "-n", help="Iterations for run"),
+    snapshot: str = typer.Option(None, "--snapshot", help="Snapshot name for rollback"),
+    dry: bool = typer.Option(False, "--dry", help="Dry run"),
+):
+    """Continual learning + reinforcement loop — gathers ledger, scores, promotes to memory."""
+    wb = resolve_workbench(workbench)
+    if action == "status":
+        st = learn_status()
+        console.print_json(data=st)
+        ls = ledger_stats()
+        console.print(f"[dim]Ledger total {ls['total']} avg_reward {ls['avg_reward'] or 0:.2f}[/dim]")
+        return
+    if action == "run":
+        res = run_loop(workbench=wb, iterations=iterations, dry=dry)
+        console.print(f"[green]Learn run workbench={wb} scored={res['scored']} promoted={res['promoted']} dry={dry}[/green]")
+        if res.get("snapshot"):
+            console.print(f"[dim]Snapshot {res['snapshot']}[/dim]")
+        for d in res.get("details", [])[:5]:
+            console.print(f"  {d['id']} {d['command'][:40]} → {d['reward']}")
+        log_execution("learn", {"action": "run", "workbench": wb, "iterations": iterations}, workbench=wb, status="ok")
+        return
+    if action == "rollback":
+        res = rollback(snapshot)
+        console.print(f"[{'green' if res.get('ok') else 'red'}]{res}[/{'green' if res.get('ok') else 'red'}]")
+        return
+    if action == "memory":
+        rows = query_memory(workbench=wb if wb != "default" else None, limit=20)
+        if not rows:
+            console.print(f"[dim]No memory for {wb} — run `hive learn run --workbench {wb}` after some experiments[/dim]")
+            return
+        tb = Table(title=f"Memory — workbench {wb}")
+        tb.add_column("ID"); tb.add_column("Kind"); tb.add_column("Score"); tb.add_column("Content", overflow="fold")
+        for m in rows:
+            tb.add_row(m["id"], m["kind"], str(m["score"]), m["content"][:80])
+        console.print(tb)
+        return
+    console.print(f"[red]Unknown learn action {action}: status|run|rollback|memory[/red]")
+
 @app.callback(invoke_without_command=True)
 def main_callback(ctx: typer.Context, version: bool = typer.Option(False, "--version", help="Show version")):
     if version:
         console.print(f"hive-research {__version__}")
         raise typer.Exit()
+    try:
+        if ctx.invoked_subcommand:
+            from hive.workbench import resolve_workbench as _rwb
+            wb = _rwb(None)
+            import sys as _sys
+            argv = " ".join(_sys.argv[1:])[:500]
+            try:
+                from hive.config import load_config as _lc
+                _cfg = _lc()
+                prov, mod = _cfg.llm.provider, _cfg.llm.ollama_model
+            except Exception:
+                prov, mod = None, None
+            from hive.ledger import log_execution as _le
+            _le(f"cli:{ctx.invoked_subcommand}", {"argv": argv}, workbench=wb, provider=prov, model=mod, status="ok")
+    except Exception:
+        pass
     if ctx.invoked_subcommand is None:
         # interactive REPL
         console.print(Markdown(f"# Hive Research - A Local research companion {__version__}\nLocal research companion — Ollama / LM Studio only.\n\nType a question, or `help` for commands. `exit` to quit.\nTry `hive tui` for full terminal workbench.\n"))

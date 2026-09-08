@@ -2,7 +2,7 @@
 
 Feynman feature-by-feature, no cloud LLM. Papers via OpenAlex / arXiv / CrossRef / Europe PMC. Synthesis via your local model. Adds **Hive-Machine** — sandboxed Perplexity Computer (files, code, web, terminal) on `~/.hive/machine/workspace`.
 
-> **Full docs:** [`DOCUMENTATION.md`](DOCUMENTATION.md) — architecture, config, CLI/TUI/Machine reference, Open WebUI guide, troubleshooting. **Hive-Machine deep dive:** [`docs/HIVE_MACHINE.md`](docs/HIVE_MACHINE.md) (mermaid architecture, workflows, audit, dashboards).
+> **Full docs:** [`DOCUMENTATION.md`](DOCUMENTATION.md) — architecture, config, CLI/TUI/Machine reference, Open WebUI guide, troubleshooting. **Hive-Machine deep dive:** [`docs/HIVE_MACHINE.md`](docs/HIVE_MACHINE.md) (mermaid) + **Folder map:** [`docs/FOLDERS.md`](docs/FOLDERS.md) (source/runtime/3-tier tree, persistence).
 
 ## Install
 

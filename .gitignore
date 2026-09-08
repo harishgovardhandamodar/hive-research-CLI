@@ -17,3 +17,6 @@ web/node_modules/
 **/local-only/**
 **/local-only
 local-only/
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+graft/
