@@ -838,6 +838,8 @@ def learn_cmd(
     action: str = typer.Argument("status", help="status|run|rollback|memory"),
     workbench: str = typer.Option(None, "--workbench", "-w", help="Narrow workbench"),
     iterations: int = typer.Option(10, "--iterations", "-n", help="Iterations for run"),
+    reward_threshold: float = typer.Option(4.0, "--reward-threshold", "-r", help="Reward threshold for promotion (3.0-5.0)"),
+    learning_rate: float = typer.Option(0.3, "--learning-rate", "-l", help="Learning rate for reinforcement (0.1-1.0)"),
     snapshot: str = typer.Option(None, "--snapshot", help="Snapshot name for rollback"),
     dry: bool = typer.Option(False, "--dry", help="Dry run"),
 ):
@@ -850,13 +852,13 @@ def learn_cmd(
         console.print(f"[dim]Ledger total {ls['total']} avg_reward {ls['avg_reward'] or 0:.2f}[/dim]")
         return
     if action == "run":
-        res = run_loop(workbench=wb, iterations=iterations, dry=dry)
+        res = run_loop(workbench=wb, iterations=iterations, reward_threshold=reward_threshold, learning_rate=learning_rate, dry=dry)
         console.print(f"[green]Learn run workbench={wb} scored={res['scored']} promoted={res['promoted']} dry={dry}[/green]")
         if res.get("snapshot"):
             console.print(f"[dim]Snapshot {res['snapshot']}[/dim]")
         for d in res.get("details", [])[:5]:
             console.print(f"  {d['id']} {d['command'][:40]} → {d['reward']}")
-        log_execution("learn", {"action": "run", "workbench": wb, "iterations": iterations}, workbench=wb, status="ok")
+        log_execution("learn", {"action": "run", "workbench": wb, "iterations": iterations, "reward_threshold": reward_threshold, "learning_rate": learning_rate}, workbench=wb, status="ok")
         return
     if action == "rollback":
         res = rollback(snapshot)

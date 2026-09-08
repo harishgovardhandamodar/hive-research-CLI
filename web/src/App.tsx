@@ -23,6 +23,9 @@ export default function App() {
   const [memory, setMemory] = useState<any[]>([])
   const [wbFilter, setWbFilter] = useState<string>('')
   const [unit, setUnit] = useState<'mgdl'|'mmol'>('mgdl')
+  const [learnIterations, setLearnIterations] = useState<number>(10)
+  const [rewardThreshold, setRewardThreshold] = useState<number>(4.0)
+  const [learningRate, setLearningRate] = useState<number>(0.3)
 
   useEffect(() => {
     api.verify().then(setVerify).catch(() => setVerify({ ok: false, msg: 'verify failed — DB not yet created (run hive machine ls)' }))
@@ -195,9 +198,31 @@ export default function App() {
                       <div style={{ fontSize: 11 }}>
                         <div>Ledger total {learnSt.ledger?.total || 0} • avg reward {learnSt.ledger?.avg_reward?.toFixed?.(2) || '-'} • memory {learnSt.memory?.total || 0}</div>
                         <div style={{ opacity: 0.7, marginTop: 4 }}>By workbench: {(learnSt.ledger?.by_workbench || []).slice(0,3).map((x:any)=> `${x.workbench}:${x.count}(${x.avg_reward?.toFixed(1) || '-'})`).join(' • ') || '-'}</div>
-                        <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-                          <button onClick={async () => { const r=await fetch('/api/learn/run', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({workbench: wbFilter || 'default', iterations: 10})}); alert(await r.text()); api.learnStatus().then(setLearnSt); api.memory(wbFilter || undefined).then(setMemory); api.ledger(30, wbFilter || undefined).then(setLedger); }} style={{ background: '#1e2a44', border: '1px solid #4f8cff', color: '#e6e8ec', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontSize: 11 }}>Run loop (10)</button>
-                          <button onClick={async () => { const r=await fetch('/api/learn/run', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({workbench: wbFilter || 'default', iterations: 20, dry: true})}); alert(await r.text()); }} style={{ background: '#0f1320', border: '1px solid #2a3347', color: '#889', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontSize: 11 }}>Dry</button>
+                        <div style={{ display: 'grid', gap: 8, marginTop: 8, background: '#0b0e14', border: '1px solid #1f2533', borderRadius: 8, padding: 10 }}>
+                          <div style={{ fontWeight: 600, fontSize: 10, opacity: 0.7 }}>Tweakers — Reinforcement Loop Controls</div>
+                          <div style={{ display: 'grid', gap: 8 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <label style={{ fontSize: 11, width: 120, opacity: 0.7 }}>Iterations: {learnIterations}</label>
+                              <input type="range" min={1} max={50} value={learnIterations} onChange={e => setLearnIterations(Number(e.target.value))} style={{ flex: 1 }} />
+                              <span style={{ fontSize: 10, opacity: 0.5 }}>1-50</span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <label style={{ fontSize: 11, width: 120, opacity: 0.7 }}>Reward Thr: {rewardThreshold.toFixed(1)}</label>
+                              <input type="range" min={3.0} max={5.0} step={0.1} value={rewardThreshold} onChange={e => setRewardThreshold(Number(e.target.value))} style={{ flex: 1 }} />
+                              <span style={{ fontSize: 10, opacity: 0.5 }}>3.0-5.0</span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <label style={{ fontSize: 11, width: 120, opacity: 0.7 }}>Learn Rate: {learningRate.toFixed(1)}</label>
+                              <input type="range" min={0.1} max={1.0} step={0.1} value={learningRate} onChange={e => setLearningRate(Number(e.target.value))} style={{ flex: 1 }} />
+                              <span style={{ fontSize: 10, opacity: 0.5 }}>0.1-1.0</span>
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button onClick={async () => { const r=await fetch('/api/learn/run', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({workbench: wbFilter || 'default', iterations: learnIterations, reward_threshold: rewardThreshold, learning_rate: learningRate})}); const txt=await r.text(); alert(txt); api.learnStatus().then(setLearnSt); api.memory(wbFilter || undefined).then(setMemory); api.ledger(30, wbFilter || undefined).then(setLedger); }} style={{ background: '#1e2a44', border: '1px solid #4f8cff', color: '#e6e8ec', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>Run loop ({learnIterations})</button>
+                            <button onClick={async () => { const r=await fetch('/api/learn/run', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({workbench: wbFilter || 'default', iterations: learnIterations, reward_threshold: rewardThreshold, learning_rate: learningRate, dry: true})}); alert(await r.text()); }} style={{ background: '#0f1320', border: '1px solid #2a3347', color: '#889', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontSize: 11 }}>Dry Run</button>
+                            <button onClick={() => { setLearnIterations(10); setRewardThreshold(4.0); setLearningRate(0.3); }} style={{ background: '#11151d', border: '1px solid #2a3347', color: '#889', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontSize: 10 }}>Reset</button>
+                          </div>
+                          <div style={{ fontSize: 10, opacity: 0.4 }}>CLI: <code>hive learn run --workbench {wbFilter || 'default'} --iterations {learnIterations} --reward-threshold {rewardThreshold.toFixed(1)} --learning-rate {learningRate.toFixed(1)}</code></div>
                         </div>
                         <div style={{ marginTop: 8, maxHeight: 100, overflowY: 'auto' }}>
                           {memory.length ? memory.slice(0,6).map((m:any) => (

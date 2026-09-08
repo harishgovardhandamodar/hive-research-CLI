@@ -59,10 +59,12 @@ class WebHandler(SimpleHTTPRequestHandler):
         if path == "/api/learn/run":
             wb = data.get("workbench")
             it = int(data.get("iterations", 10))
+            rt = float(data.get("reward_threshold", 4.0))
+            lr = float(data.get("learning_rate", 0.3))
             dry = bool(data.get("dry", False))
             try:
                 from hive.learn import run_loop
-                res = run_loop(workbench=wb or "default", iterations=it, dry=dry)
+                res = run_loop(workbench=wb or "default", iterations=it, reward_threshold=rt, learning_rate=lr, dry=dry)
                 self._set_headers()
                 self.wfile.write(json.dumps(res).encode())
             except Exception as e:

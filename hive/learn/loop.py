@@ -64,7 +64,7 @@ def learn_status() -> dict:
     return {"ledger": stats, "memory": mstats, "snapshots": snaps}
 
 
-def run_loop(workbench: str = "default", iterations: int = 10, dry: bool = False) -> dict:
+def run_loop(workbench: str = "default", iterations: int = 10, reward_threshold: float = 4.0, learning_rate: float = 0.3, dry: bool = False) -> dict:
     """Run reinforcement loop: score recent executions, persist high-reward memory.
 
     Returns {scored, promoted, snapshot}.
@@ -91,7 +91,7 @@ def run_loop(workbench: str = "default", iterations: int = 10, dry: bool = False
             con.commit()
         con.close()
         # promote high-reward to memory (continual learning)
-        if reward >= 4.0 and not dry:
+        if reward >= reward_threshold and not dry:
             # avoid duplicate
             existing = query_memory(workbench=r["workbench"], limit=20)
             content_sig = f"{r['command']}:{r['args'][:80]}"
@@ -110,7 +110,7 @@ def run_loop(workbench: str = "default", iterations: int = 10, dry: bool = False
         SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
         snap_path = SNAPSHOT_DIR / f"{workbench}_{int(time.time())}.json"
         snap_path.write_text(
-            json.dumps({"workbench": workbench, "ts": time.time(), "scored": scored, "promoted": promoted, "details": details}, indent=2)
+            json.dumps({"workbench": workbench, "ts": time.time(), "scored": scored, "promoted": promoted, "reward_threshold": reward_threshold, "learning_rate": learning_rate, "details": details}, indent=2)
         )
     return {"workbench": workbench, "scored": scored, "promoted": promoted, "details": details, "snapshot": str(snap_path) if snap_path else None}
 
